@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --tg-theme-bg-color: #0f1419;
+  --tg-theme-text-color: #ffffff;
+  --tg-theme-hint-color: #8b98a5;
+  --tg-theme-button-color: #166534;
+  --tg-theme-button-text-color: #ffffff;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--tg-theme-bg-color, #0f1419);
+  color: var(--tg-theme-text-color, #ffffff);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* Telegram Mini App safe area */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+
+/* Calendar grid */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+/* Smooth transitions */
+.transition-all {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Status indicators */
+.status-accepted {
+  background-color: #166534;
+}
+
+.status-pending {
+  background-color: #d4af37;
+}
+
+.status-maybe {
+  background-color: #6366f1;
+}
+
+.status-declined {
+  background-color: #dc2626;
+}
+
+/* Glowing effect for active dates */
+.glow-green {
+  box-shadow: 0 0 12px rgba(22, 101, 52, 0.5);
+}
+
+.glow-gold {
+  box-shadow: 0 0 12px rgba(212, 175, 55, 0.5);
+}
