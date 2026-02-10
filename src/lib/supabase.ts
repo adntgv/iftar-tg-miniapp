@@ -107,7 +107,13 @@ export async function getUserEvents(userId: string): Promise<Event[]> {
     invitation_status: i.status,
   })) || [];
 
-  return [...(hosted || []), ...invitedEvents];
+  // Deduplicate by event id
+  const allEvents = [...(hosted || []), ...invitedEvents];
+  const uniqueEvents = Array.from(
+    new Map(allEvents.map(e => [e.id, e])).values()
+  );
+
+  return uniqueEvents;
 }
 
 export async function checkCollisions(

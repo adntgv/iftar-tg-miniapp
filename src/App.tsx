@@ -46,6 +46,14 @@ function App() {
             });
             setUser(dbUser);
           }
+
+          // Handle start_param deep link (event_<id>)
+          const startParam = initData?.start_param;
+          if (startParam?.startsWith('event_')) {
+            const eventId = startParam.replace('event_', '');
+            const details = await getEventDetails(eventId);
+            setSelectedEvent(details);
+          }
         } else {
           const mockUser = await getOrCreateUser({
             id: 123456789,
@@ -53,6 +61,14 @@ function App() {
             first_name: 'Developer',
           });
           setUser(mockUser);
+        }
+
+        // Handle URL param deep link (?event=<id>)
+        const params = new URLSearchParams(window.location.search);
+        const eventId = params.get('event');
+        if (eventId) {
+          const details = await getEventDetails(eventId);
+          setSelectedEvent(details);
         }
       } catch (error) {
         console.error('Failed to initialize:', error);
