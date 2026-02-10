@@ -9,10 +9,10 @@ import {
   type User, 
   type Event 
 } from './lib/supabase';
-import { Plus, Moon, Calendar as CalendarIcon } from 'lucide-react';
+import { Plus, Moon, Clock } from 'lucide-react';
 import './index.css';
 
-// Ramadan 2026 dates (approximate - would use actual Islamic calendar API)
+// Ramadan 2026 dates
 const RAMADAN_2026_START = new Date('2026-02-17');
 const RAMADAN_2026_END = new Date('2026-03-18');
 
@@ -25,28 +25,15 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [iftarTime, setIftarTime] = useState<string>('18:30');
 
-  // Initialize Telegram WebApp
   useEffect(() => {
     const initTelegram = async () => {
       try {
-        // Get Telegram WebApp data
         const tg = window.Telegram?.WebApp;
         
         if (tg) {
           tg.ready();
           tg.expand();
-          
-          // Apply Telegram theme
-          document.documentElement.style.setProperty(
-            '--tg-theme-bg-color', 
-            tg.themeParams.bg_color || '#0f1419'
-          );
-          document.documentElement.style.setProperty(
-            '--tg-theme-text-color', 
-            tg.themeParams.text_color || '#ffffff'
-          );
 
-          // Get user from initData
           const initData = tg.initDataUnsafe;
           if (initData?.user) {
             const telegramUser = initData.user;
@@ -60,8 +47,6 @@ function App() {
             setUser(dbUser);
           }
         } else {
-          // Development mode - create mock user
-          console.log('Development mode - no Telegram WebApp');
           const mockUser = await getOrCreateUser({
             id: 123456789,
             username: 'dev_user',
@@ -79,7 +64,6 @@ function App() {
     initTelegram();
   }, []);
 
-  // Load user events
   const loadEvents = useCallback(async () => {
     if (!user) return;
     
@@ -95,17 +79,14 @@ function App() {
     loadEvents();
   }, [loadEvents]);
 
-  // Handle date selection
   const handleDateSelect = async (date: Date) => {
     setSelectedDate(date);
     
-    // Check if there's an event on this date
     const eventOnDate = events.find(
       e => new Date(e.date).toDateString() === date.toDateString()
     );
     
     if (eventOnDate) {
-      // Load full event details
       try {
         const details = await getEventDetails(eventOnDate.id);
         setSelectedEvent(details);
@@ -113,7 +94,6 @@ function App() {
         console.error('Failed to load event details:', error);
       }
     } else {
-      // Open create modal for new event
       setIsCreateModalOpen(true);
     }
   };
@@ -130,19 +110,15 @@ function App() {
     }
   };
 
-  // Calculate iftar time based on location (simplified)
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (_position) => {
-          // In real app, would call prayer times API with _position.coords
-          // For now, use approximate time
+        () => {
           const month = new Date().getMonth();
           const baseTime = month >= 2 && month <= 4 ? 19 : 18;
           setIftarTime(`${baseTime}:30`);
         },
         () => {
-          // Default time if geolocation fails
           setIftarTime('18:30');
         }
       );
@@ -151,39 +127,39 @@ function App() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
-        <div className="text-center">
-          <Moon className="w-12 h-12 text-gold-500 mx-auto animate-pulse" />
-          <p className="mt-4 text-gray-400">Загрузка...</p>
+      <div className="bg-dark" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
+          <Moon size={48} className="text-gold animate-pulse" />
+          <p className="text-muted" style={{ marginTop: '16px' }}>Загрузка...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-dark-bg">
+    <div className="bg-dark" style={{ minHeight: '100vh' }}>
       {/* Header */}
-      <header className="p-4 border-b border-dark-border">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Moon className="w-6 h-6 text-gold-500" />
-            <h1 className="text-lg font-semibold">Рамадан 2026</h1>
+      <header className="header">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Moon size={24} className="text-gold" />
+            <h1 style={{ fontSize: '18px', fontWeight: 600, margin: 0 }}>Рамадан 2026</h1>
           </div>
-          <div className="text-sm text-gray-400 flex items-center gap-1">
-            <CalendarIcon className="w-4 h-4" />
-            Ифтар: {iftarTime}
+          <div className="text-muted" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px' }}>
+            <Clock size={16} />
+            <span>Ифтар: {iftarTime}</span>
           </div>
         </div>
         
         {user && (
-          <div className="mt-2 text-sm text-gray-400">
+          <div className="text-muted" style={{ marginTop: '8px', fontSize: '14px' }}>
             Салам, {user.first_name || user.username}! 👋
           </div>
         )}
       </header>
 
       {/* Main content */}
-      <main className="p-4">
+      <main style={{ padding: '16px' }}>
         <Calendar
           events={events}
           onDateSelect={handleDateSelect}
@@ -192,48 +168,48 @@ function App() {
           ramadanEnd={RAMADAN_2026_END}
         />
 
-        {/* Upcoming events summary */}
+        {/* Upcoming events */}
         {events.length > 0 && (
-          <div className="mt-4 space-y-2">
-            <h2 className="text-sm text-gray-400 font-medium">Ближайшие ифтары</h2>
-            {events
-              .filter(e => new Date(e.date) >= new Date())
-              .slice(0, 3)
-              .map(event => (
-                <button
-                  key={event.id}
-                  onClick={() => getEventDetails(event.id).then(setSelectedEvent)}
-                  className="w-full p-3 bg-dark-card rounded-xl flex items-center justify-between
-                             hover:bg-dark-border transition-colors text-left"
-                >
-                  <div>
-                    <div className="font-medium">
-                      {new Date(event.date).toLocaleDateString('ru-RU', { 
-                        day: 'numeric', 
-                        month: 'long' 
-                      })}
+          <div style={{ marginTop: '24px' }}>
+            <h2 className="text-muted" style={{ fontSize: '14px', fontWeight: 500, marginBottom: '12px' }}>
+              Ближайшие ифтары
+            </h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {events
+                .filter(e => new Date(e.date) >= new Date())
+                .slice(0, 3)
+                .map(event => (
+                  <div
+                    key={event.id}
+                    onClick={() => getEventDetails(event.id).then(setSelectedEvent)}
+                    className="event-card"
+                  >
+                    <div>
+                      <div style={{ fontWeight: 500 }}>
+                        {new Date(event.date).toLocaleDateString('ru-RU', { 
+                          day: 'numeric', 
+                          month: 'long' 
+                        })}
+                      </div>
+                      <div className="text-muted" style={{ fontSize: '14px' }}>
+                        {event.location || 'Место не указано'}
+                      </div>
                     </div>
-                    <div className="text-sm text-gray-400">
-                      {event.location || 'Место не указано'}
-                    </div>
+                    <span className={`badge ${event.host_id === user?.id ? 'badge-primary' : 'badge-gold'}`}>
+                      {event.host_id === user?.id ? 'Хозяин' : 'Гость'}
+                    </span>
                   </div>
-                  <div className={`
-                    px-2 py-1 rounded-full text-xs
-                    ${event.host_id === user?.id ? 'bg-primary-500' : 'bg-gold-500'}
-                  `}>
-                    {event.host_id === user?.id ? 'Хозяин' : 'Гость'}
-                  </div>
-                </button>
-              ))}
+                ))}
+            </div>
           </div>
         )}
 
         {/* Empty state */}
         {events.length === 0 && (
-          <div className="mt-8 text-center">
-            <Moon className="w-16 h-16 text-gray-600 mx-auto" />
-            <h2 className="mt-4 text-lg font-medium">Пока пусто</h2>
-            <p className="mt-2 text-gray-400 text-sm">
+          <div className="empty-state">
+            <Moon size={64} />
+            <h2 style={{ fontSize: '18px', fontWeight: 500, marginBottom: '8px' }}>Пока пусто</h2>
+            <p className="text-muted" style={{ fontSize: '14px' }}>
               Выберите дату чтобы создать приглашение на ифтар
             </p>
           </div>
@@ -246,14 +222,12 @@ function App() {
           setSelectedDate(new Date());
           setIsCreateModalOpen(true);
         }}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-primary-500 rounded-full 
-                   flex items-center justify-center shadow-lg hover:bg-primary-600 
-                   transition-colors safe-area-bottom"
+        className="fab safe-area-bottom"
       >
-        <Plus className="w-6 h-6" />
+        <Plus size={24} />
       </button>
 
-      {/* Create Event Modal */}
+      {/* Modals */}
       {isCreateModalOpen && selectedDate && user && (
         <CreateEventModal
           isOpen={isCreateModalOpen}
@@ -267,7 +241,6 @@ function App() {
         />
       )}
 
-      {/* Event Details Modal */}
       {selectedEvent && user && (
         <EventDetails
           event={selectedEvent}
@@ -281,7 +254,6 @@ function App() {
   );
 }
 
-// Telegram WebApp type declaration
 declare global {
   interface Window {
     Telegram?: {
@@ -293,9 +265,6 @@ declare global {
         themeParams: {
           bg_color?: string;
           text_color?: string;
-          hint_color?: string;
-          button_color?: string;
-          button_text_color?: string;
         };
         initDataUnsafe: {
           user?: {

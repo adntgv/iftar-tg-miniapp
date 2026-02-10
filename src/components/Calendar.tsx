@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, addMonths, subMonths } from 'date-fns';
+import { ru } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Moon } from 'lucide-react';
 import type { Event } from '../lib/supabase';
 
@@ -34,12 +35,11 @@ export function Calendar({ events, onDateSelect, selectedDate, ramadanStart, ram
     const event = getEventForDate(date);
     if (!event) return null;
     
-    // Check if user is host or guest
     const invitationStatus = (event as any).invitation_status;
     if (invitationStatus) {
-      return invitationStatus; // guest
+      return invitationStatus;
     }
-    return 'hosting'; // host
+    return 'hosting';
   };
 
   const isInRamadan = (date: Date) => {
@@ -48,35 +48,37 @@ export function Calendar({ events, onDateSelect, selectedDate, ramadanStart, ram
   };
 
   return (
-    <div className="bg-dark-card rounded-2xl p-4">
+    <div className="card">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <button
           onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-          className="p-2 hover:bg-dark-border rounded-lg transition-colors"
+          className="btn btn-ghost"
+          style={{ padding: '8px' }}
         >
-          <ChevronLeft className="w-5 h-5" />
+          <ChevronLeft size={20} />
         </button>
         
-        <div className="flex items-center gap-2">
-          <Moon className="w-5 h-5 text-gold-500" />
-          <span className="font-semibold text-lg">
-            {format(currentMonth, 'LLLL yyyy')}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Moon size={20} className="text-gold" />
+          <span style={{ fontWeight: 600, fontSize: '18px' }}>
+            {format(currentMonth, 'LLLL yyyy', { locale: ru })}
           </span>
         </div>
         
         <button
           onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-          className="p-2 hover:bg-dark-border rounded-lg transition-colors"
+          className="btn btn-ghost"
+          style={{ padding: '8px' }}
         >
-          <ChevronRight className="w-5 h-5" />
+          <ChevronRight size={20} />
         </button>
       </div>
 
       {/* Week days header */}
-      <div className="calendar-grid mb-2">
+      <div className="calendar-grid" style={{ marginBottom: '8px' }}>
         {weekDays.map(day => (
-          <div key={day} className="text-center text-xs text-gray-500 py-2">
+          <div key={day} className="text-muted" style={{ textAlign: 'center', fontSize: '12px', padding: '8px 0' }}>
             {day}
           </div>
         ))}
@@ -86,7 +88,7 @@ export function Calendar({ events, onDateSelect, selectedDate, ramadanStart, ram
       <div className="calendar-grid">
         {/* Empty cells for alignment */}
         {Array.from({ length: adjustedFirstDay }).map((_, i) => (
-          <div key={`empty-${i}`} className="aspect-square" />
+          <div key={`empty-${i}`} style={{ aspectRatio: '1' }} />
         ))}
 
         {/* Actual days */}
@@ -94,56 +96,45 @@ export function Calendar({ events, onDateSelect, selectedDate, ramadanStart, ram
           const status = getDayStatus(day);
           const inRamadan = isInRamadan(day);
           const isSelected = selectedDate && isSameDay(day, selectedDate);
-          const today = isToday(day);
+          const isTodayDate = isToday(day);
+
+          const classNames = [
+            'day-cell',
+            isTodayDate && 'today',
+            isSelected && 'selected',
+            status,
+          ].filter(Boolean).join(' ');
 
           return (
             <button
               key={day.toISOString()}
               onClick={() => onDateSelect(day)}
               disabled={!inRamadan}
-              className={`
-                aspect-square rounded-xl flex flex-col items-center justify-center
-                text-sm font-medium transition-all relative
-                ${!inRamadan ? 'opacity-30 cursor-not-allowed' : 'hover:bg-dark-border'}
-                ${isSelected ? 'ring-2 ring-gold-500 bg-dark-border' : ''}
-                ${today ? 'border border-gold-500' : ''}
-                ${status === 'hosting' ? 'bg-primary-500/30 glow-green' : ''}
-                ${status === 'accepted' ? 'bg-primary-500/50' : ''}
-                ${status === 'pending' ? 'bg-gold-500/30 glow-gold' : ''}
-                ${status === 'maybe' ? 'bg-indigo-500/30' : ''}
-              `}
+              className={classNames}
             >
               <span>{format(day, 'd')}</span>
-              {status && (
-                <span className={`
-                  absolute bottom-1 w-1.5 h-1.5 rounded-full
-                  ${status === 'hosting' ? 'bg-primary-400' : ''}
-                  ${status === 'accepted' ? 'bg-primary-500' : ''}
-                  ${status === 'pending' ? 'bg-gold-500' : ''}
-                  ${status === 'maybe' ? 'bg-indigo-500' : ''}
-                `} />
-              )}
+              {status && <span className={`status-dot ${status}`} />}
             </button>
           );
         })}
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-4 mt-4 text-xs text-gray-400">
-        <div className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-primary-400" />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginTop: '16px', fontSize: '12px' }} className="text-muted">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
           <span>Приглашаю</span>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-primary-500" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
           <span>Иду</span>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-gold-500" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#d4af37' }} />
           <span>Ожидает</span>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-indigo-500" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#6366f1' }} />
           <span>Может быть</span>
         </div>
       </div>

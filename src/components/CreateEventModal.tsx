@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
 import { X, MapPin, Clock, FileText, Users, AlertTriangle, Check } from 'lucide-react';
 import { checkCollisions, createEvent, createInvitations, getUsersByTelegramIds, type User } from '../lib/supabase';
 
@@ -36,23 +37,19 @@ export function CreateEventModal({
   const [guestInput, setGuestInput] = useState('');
   const [guests, setGuests] = useState<GuestWithCollision[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [, setIsCheckingCollisions] = useState(false);
 
-  // Parse guest usernames and check collisions
   const addGuest = async () => {
     if (!guestInput.trim()) return;
     
     const username = guestInput.trim().replace('@', '');
     
-    // Check if already added
     if (guests.find(g => g.username === username)) {
       setGuestInput('');
       return;
     }
 
-    // For now, add as placeholder - in real app would lookup via Telegram
     const newGuest: GuestWithCollision = {
-      telegram_id: 0, // Would be resolved from Telegram
+      telegram_id: 0,
       username,
       first_name: username,
       selected: true,
@@ -62,12 +59,9 @@ export function CreateEventModal({
     setGuestInput('');
   };
 
-  // Check collisions when guests change
   useEffect(() => {
     const checkGuestCollisions = async () => {
       if (guests.length === 0) return;
-      
-      setIsCheckingCollisions(true);
       
       const telegramIds = guests.filter(g => g.telegram_id > 0).map(g => g.telegram_id);
       if (telegramIds.length > 0) {
@@ -84,28 +78,25 @@ export function CreateEventModal({
           };
         }));
       }
-      
-      setIsCheckingCollisions(false);
     };
 
     checkGuestCollisions();
   }, [guests.length, selectedDate]);
 
-  const toggleGuest = (telegramId: number) => {
+  const toggleGuest = (username: string) => {
     setGuests(prev => prev.map(g => 
-      g.telegram_id === telegramId ? { ...g, selected: !g.selected } : g
+      g.username === username ? { ...g, selected: !g.selected } : g
     ));
   };
 
-  const removeGuest = (telegramId: number) => {
-    setGuests(prev => prev.filter(g => g.telegram_id !== telegramId));
+  const removeGuest = (username: string) => {
+    setGuests(prev => prev.filter(g => g.username !== username));
   };
 
   const handleSubmit = async () => {
     setIsLoading(true);
     
     try {
-      // Create event
       const event = await createEvent(
         currentUser.id,
         format(selectedDate, 'yyyy-MM-dd'),
@@ -115,7 +106,6 @@ export function CreateEventModal({
         notes
       );
 
-      // Get selected guests
       const selectedGuests = guests.filter(g => g.selected && g.telegram_id > 0);
       
       if (selectedGuests.length > 0) {
@@ -137,43 +127,48 @@ export function CreateEventModal({
   const hasCollisions = guests.some(g => g.collision && g.selected);
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-end z-50">
-      <div className="bg-dark-card w-full rounded-t-3xl max-h-[90vh] overflow-y-auto safe-area-bottom">
+    <div className="modal-overlay">
+      <div className="modal-content safe-area-bottom">
         {/* Header */}
-        <div className="sticky top-0 bg-dark-card p-4 border-b border-dark-border flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Новый ифтар</h2>
-          <button onClick={onClose} className="p-2 hover:bg-dark-border rounded-lg">
-            <X className="w-5 h-5" />
+        <div className="header" style={{ borderRadius: '24px 24px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: 600, margin: 0 }}>Новый ифтар</h2>
+          <button onClick={onClose} className="btn btn-ghost" style={{ padding: '8px' }}>
+            <X size={20} />
           </button>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {/* Date display */}
-          <div className="bg-primary-500/20 rounded-xl p-4 text-center">
-            <div className="text-gold-500 text-sm">Дата ифтара</div>
-            <div className="text-xl font-semibold mt-1">
-              {format(selectedDate, 'd MMMM yyyy')}
+          <div style={{ 
+            backgroundColor: 'rgba(22, 101, 52, 0.2)', 
+            borderRadius: '16px', 
+            padding: '20px', 
+            textAlign: 'center' 
+          }}>
+            <div className="text-gold" style={{ fontSize: '14px' }}>Дата ифтара</div>
+            <div style={{ fontSize: '20px', fontWeight: 600, marginTop: '4px' }}>
+              {format(selectedDate, 'd MMMM yyyy', { locale: ru })}
             </div>
           </div>
 
           {/* Time */}
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm text-gray-400">
-              <Clock className="w-4 h-4" />
+          <div>
+            <label className="text-muted" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', marginBottom: '8px' }}>
+              <Clock size={16} />
               Время ифтара
             </label>
             <input
               type="time"
               value={iftarTime}
               onChange={e => setIftarTime(e.target.value)}
-              className="w-full bg-dark-border rounded-xl px-4 py-3 text-white"
+              className="input"
             />
           </div>
 
           {/* Location */}
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm text-gray-400">
-              <MapPin className="w-4 h-4" />
+          <div>
+            <label className="text-muted" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', marginBottom: '8px' }}>
+              <MapPin size={16} />
               Место
             </label>
             <input
@@ -181,25 +176,23 @@ export function CreateEventModal({
               value={location}
               onChange={e => setLocation(e.target.value)}
               placeholder="Мой дом"
-              className="w-full bg-dark-border rounded-xl px-4 py-3 text-white placeholder-gray-500"
+              className="input"
             />
           </div>
 
           {/* Address */}
-          <div className="space-y-2">
-            <input
-              type="text"
-              value={address}
-              onChange={e => setAddress(e.target.value)}
-              placeholder="Адрес (опционально)"
-              className="w-full bg-dark-border rounded-xl px-4 py-3 text-white placeholder-gray-500"
-            />
-          </div>
+          <input
+            type="text"
+            value={address}
+            onChange={e => setAddress(e.target.value)}
+            placeholder="Адрес (опционально)"
+            className="input"
+          />
 
           {/* Notes */}
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm text-gray-400">
-              <FileText className="w-4 h-4" />
+          <div>
+            <label className="text-muted" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', marginBottom: '8px' }}>
+              <FileText size={16} />
               Заметки
             </label>
             <textarea
@@ -207,64 +200,64 @@ export function CreateEventModal({
               onChange={e => setNotes(e.target.value)}
               placeholder="Плов будет! 🍚"
               rows={2}
-              className="w-full bg-dark-border rounded-xl px-4 py-3 text-white placeholder-gray-500 resize-none"
+              className="input"
+              style={{ resize: 'none' }}
             />
           </div>
 
           {/* Guests */}
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm text-gray-400">
-              <Users className="w-4 h-4" />
+          <div>
+            <label className="text-muted" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', marginBottom: '8px' }}>
+              <Users size={16} />
               Гости
             </label>
             
-            <div className="flex gap-2">
+            <div style={{ display: 'flex', gap: '8px' }}>
               <input
                 type="text"
                 value={guestInput}
                 onChange={e => setGuestInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addGuest()}
                 placeholder="@username"
-                className="flex-1 bg-dark-border rounded-xl px-4 py-3 text-white placeholder-gray-500"
+                className="input"
+                style={{ flex: 1 }}
               />
-              <button
-                onClick={addGuest}
-                className="px-4 py-3 bg-primary-500 rounded-xl font-medium"
-              >
+              <button onClick={addGuest} className="btn btn-primary">
                 +
               </button>
             </div>
 
             {/* Guest list */}
             {guests.length > 0 && (
-              <div className="space-y-2 mt-3">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
                 {guests.map(guest => (
                   <div
-                    key={guest.telegram_id || guest.username}
-                    className={`
-                      flex items-center justify-between p-3 rounded-xl
-                      ${guest.collision ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-dark-border'}
-                      ${!guest.selected ? 'opacity-50' : ''}
-                    `}
+                    key={guest.username}
+                    className={`guest-item ${guest.collision ? 'collision' : ''} ${!guest.selected ? 'unselected' : ''}`}
                   >
-                    <div className="flex items-center gap-3">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <button
-                        onClick={() => toggleGuest(guest.telegram_id)}
-                        className={`
-                          w-5 h-5 rounded border-2 flex items-center justify-center
-                          ${guest.selected ? 'bg-primary-500 border-primary-500' : 'border-gray-500'}
-                        `}
+                        onClick={() => toggleGuest(guest.username!)}
+                        style={{
+                          width: '20px',
+                          height: '20px',
+                          borderRadius: '4px',
+                          border: `2px solid ${guest.selected ? 'var(--color-primary)' : 'var(--color-text-muted)'}`,
+                          backgroundColor: guest.selected ? 'var(--color-primary)' : 'transparent',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                        }}
                       >
-                        {guest.selected && <Check className="w-3 h-3" />}
+                        {guest.selected && <Check size={12} color="white" />}
                       </button>
                       
                       <div>
-                        <div className="font-medium">
-                          @{guest.username || guest.first_name}
-                        </div>
+                        <div style={{ fontWeight: 500 }}>@{guest.username}</div>
                         {guest.collision && (
-                          <div className="text-xs text-yellow-500 flex items-center gap-1 mt-0.5">
-                            <AlertTriangle className="w-3 h-3" />
+                          <div style={{ fontSize: '12px', color: '#eab308', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                            <AlertTriangle size={12} />
                             Идёт к @{guest.collision.host_username}
                           </div>
                         )}
@@ -272,10 +265,11 @@ export function CreateEventModal({
                     </div>
                     
                     <button
-                      onClick={() => removeGuest(guest.telegram_id)}
-                      className="p-1 hover:bg-dark-bg rounded"
+                      onClick={() => removeGuest(guest.username!)}
+                      className="btn btn-ghost"
+                      style={{ padding: '4px' }}
                     >
-                      <X className="w-4 h-4 text-gray-400" />
+                      <X size={16} className="text-muted" />
                     </button>
                   </div>
                 ))}
@@ -285,9 +279,17 @@ export function CreateEventModal({
 
           {/* Collision warning */}
           {hasCollisions && (
-            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-yellow-500">
+            <div style={{ 
+              backgroundColor: 'rgba(234, 179, 8, 0.1)', 
+              border: '1px solid rgba(234, 179, 8, 0.3)', 
+              borderRadius: '12px', 
+              padding: '12px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '12px'
+            }}>
+              <AlertTriangle size={20} color="#eab308" style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div style={{ fontSize: '14px', color: '#eab308' }}>
                 Некоторые гости уже приглашены на эту дату. 
                 Вы можете убрать их из списка или отправить приглашение всё равно.
               </div>
@@ -298,10 +300,10 @@ export function CreateEventModal({
           <button
             onClick={handleSubmit}
             disabled={isLoading}
-            className="w-full bg-primary-500 hover:bg-primary-600 disabled:opacity-50 
-                       rounded-xl py-4 font-semibold text-lg transition-colors"
+            className="btn btn-primary"
+            style={{ width: '100%', padding: '16px', fontSize: '16px' }}
           >
-            {isLoading ? 'Создаю...' : 'Отправить приглашения'}
+            {isLoading ? 'Создаю...' : 'Создать ифтар'}
           </button>
         </div>
       </div>
