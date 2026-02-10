@@ -199,6 +199,42 @@ bot.on('callback_query:data', async (ctx) => {
       show_alert: true
     });
 
+    // Notify host about the response
+    try {
+      const { data: event } = await supabase
+        .from('events')
+        .select('host:users(telegram_id, first_name), date, location')
+        .eq('id', eventId)
+        .single();
+
+      if (event?.host?.telegram_id && event.host.telegram_id !== telegramId) {
+        const guestName = ctx.from.first_name || ctx.from.username || 'Гость';
+        const eventDate = new Date(event.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+        
+        const statusEmoji: Record<string, string> = {
+          accepted: '✅',
+          declined: '❌',
+          maybe: '🤔',
+        };
+        
+        const statusLabel: Record<string, string> = {
+          accepted: 'придёт',
+          declined: 'не сможет',
+          maybe: 'пока не уверен',
+        };
+        
+        await bot.api.sendMessage(
+          event.host.telegram_id,
+          `${statusEmoji[status]} *${guestName}* ${statusLabel[status]}!\n\n` +
+          `📅 Ифтар ${eventDate}\n` +
+          `📍 ${event.location || 'Место не указано'}`,
+          { parse_mode: 'Markdown' }
+        );
+      }
+    } catch (e) {
+      console.error('Failed to notify host:', e);
+    }
+
     // Update message to show response
     const keyboard = new InlineKeyboard()
       .text(status === 'accepted' ? '✅ Приду ✓' : '✅ Приду', `rsvp:${eventId}:accepted`)

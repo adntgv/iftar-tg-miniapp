@@ -26,12 +26,14 @@ export interface Event {
   notes: string | null;
   created_at: string;
   host?: User;
+  invitation_status?: string;
 }
 
 export interface Invitation {
   id: string;
   event_id: string;
-  guest_id: string;
+  guest_id: string | null;
+  guest_username: string | null; // For pending invites without user
   status: 'pending' | 'accepted' | 'declined' | 'maybe';
   responded_at: string | null;
   created_at: string;
@@ -88,24 +90,38 @@ export async function getOrCreateUser(telegramUser: {
   return newUser;
 }
 
+export async function getUserByUsername(username: string): Promise<User | null> {
+  const { data } = await supabase
+    .from('users')
+    .select('*')
+    .eq('username', username.toLowerCase())
+    .single();
+  return data;
+}
+
 export async function getUserEvents(userId: string): Promise<Event[]> {
-  // Get events where user is host or invited
+  // Get events where user is host
   const { data: hosted } = await supabase
     .from('events')
     .select('*, host:users(*)')
     .eq('host_id', userId)
+    .gte('date', new Date().toISOString().split('T')[0])
     .order('date', { ascending: true });
 
+  // Get events where user is invited
   const { data: invited } = await supabase
     .from('invitations')
     .select('*, event:events(*, host:users(*))')
     .eq('guest_id', userId)
     .order('created_at', { ascending: true });
 
-  const invitedEvents = invited?.map(i => ({
-    ...i.event,
-    invitation_status: i.status,
-  })) || [];
+  const invitedEvents = (invited || [])
+    .filter(i => i.event)
+    .map(i => ({
+      ...i.event,
+      invitation_status: i.status,
+      invitation_id: i.id,
+    }));
 
   // Deduplicate by event id
   const allEvents = [...(hosted || []), ...invitedEvents];
@@ -113,27 +129,44 @@ export async function getUserEvents(userId: string): Promise<Event[]> {
     new Map(allEvents.map(e => [e.id, e])).values()
   );
 
-  return uniqueEvents;
+  return uniqueEvents.sort((a, b) => 
+    new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
 }
 
 export async function checkCollisions(
-  guestTelegramIds: number[],
+  usernames: string[],
   date: string
-): Promise<{ telegram_id: number; host_username: string; status: string }[]> {
-  const collisions: { telegram_id: number; host_username: string; status: string }[] = [];
+): Promise<{ username: string; host_username: string; status: string }[]> {
+  const collisions: { username: string; host_username: string; status: string }[] = [];
 
-  for (const telegramId of guestTelegramIds) {
-    const { data } = await supabase.rpc('check_guest_availability', {
-      p_guest_telegram_id: telegramId,
-      p_date: date,
-    });
+  for (const username of usernames) {
+    // First try to find user by username
+    const { data: user } = await supabase
+      .from('users')
+      .select('id')
+      .eq('username', username.toLowerCase())
+      .single();
 
-    if (data && data.length > 0) {
-      collisions.push({
-        telegram_id: telegramId,
-        host_username: data[0].host_username,
-        status: data[0].status,
-      });
+    if (user) {
+      // Check if user has invitations on this date
+      const { data: invites } = await supabase
+        .from('invitations')
+        .select('status, event:events(date, host:users(username))')
+        .eq('guest_id', user.id)
+        .in('status', ['accepted', 'pending', 'maybe']);
+
+      const collision = invites?.find(i => 
+        i.event && (i.event as any).date === date
+      );
+
+      if (collision && collision.event) {
+        collisions.push({
+          username,
+          host_username: (collision.event as any).host?.username || 'кто-то',
+          status: collision.status,
+        });
+      }
     }
   }
 
@@ -163,6 +196,32 @@ export async function createEvent(
 
   if (error) throw error;
   return data;
+}
+
+export async function createInvitationsByUsername(
+  eventId: string,
+  usernames: string[]
+): Promise<void> {
+  for (const username of usernames) {
+    // Try to find existing user
+    const { data: user } = await supabase
+      .from('users')
+      .select('id')
+      .eq('username', username.toLowerCase())
+      .single();
+
+    if (user) {
+      // User exists - create invitation with guest_id
+      await supabase
+        .from('invitations')
+        .upsert({
+          event_id: eventId,
+          guest_id: user.id,
+          status: 'pending',
+        }, { onConflict: 'event_id,guest_id' });
+    }
+    // If user doesn't exist, they'll be invited when they open the link
+  }
 }
 
 export async function createInvitations(
@@ -201,14 +260,14 @@ export async function respondToInvitation(
   return data;
 }
 
-export async function getEventDetails(eventId: string): Promise<Event & { invitations: Invitation[] }> {
+export async function getEventDetails(eventId: string): Promise<(Event & { invitations: Invitation[] }) | null> {
   const { data: event, error: eventError } = await supabase
     .from('events')
     .select('*, host:users(*)')
     .eq('id', eventId)
     .single();
 
-  if (eventError) throw eventError;
+  if (eventError || !event) return null;
 
   const { data: invitations } = await supabase
     .from('invitations')
@@ -218,7 +277,6 @@ export async function getEventDetails(eventId: string): Promise<Event & { invita
   return { ...event, invitations: invitations || [] };
 }
 
-// Get users by telegram IDs for inviting
 export async function getUsersByTelegramIds(telegramIds: number[]): Promise<User[]> {
   const { data } = await supabase
     .from('users')
@@ -226,4 +284,22 @@ export async function getUsersByTelegramIds(telegramIds: number[]): Promise<User
     .in('telegram_id', telegramIds);
   
   return data || [];
+}
+
+export async function deleteEvent(eventId: string): Promise<void> {
+  const { error } = await supabase
+    .from('events')
+    .delete()
+    .eq('id', eventId);
+  
+  if (error) throw error;
+}
+
+export async function removeInvitation(invitationId: string): Promise<void> {
+  const { error } = await supabase
+    .from('invitations')
+    .delete()
+    .eq('id', invitationId);
+  
+  if (error) throw error;
 }

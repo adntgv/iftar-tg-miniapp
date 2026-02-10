@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { X, MapPin, Clock, FileText, Users, AlertTriangle, Check } from 'lucide-react';
-import { checkCollisions, createEvent, createInvitations, getUsersByTelegramIds, type User } from '../lib/supabase';
+import { X, MapPin, Clock, FileText, Users, AlertTriangle, Check, Loader } from 'lucide-react';
+import { checkCollisions, createEvent, createInvitationsByUsername, type User } from '../lib/supabase';
 
 interface CreateEventModalProps {
   isOpen: boolean;
@@ -12,10 +12,8 @@ interface CreateEventModalProps {
   onEventCreated: () => void;
 }
 
-interface GuestWithCollision {
-  telegram_id: number;
-  username?: string;
-  first_name?: string;
+interface GuestEntry {
+  username: string;
   collision?: {
     host_username: string;
     status: string;
@@ -35,52 +33,57 @@ export function CreateEventModal({
   const [notes, setNotes] = useState('');
   const [iftarTime, setIftarTime] = useState('18:30');
   const [guestInput, setGuestInput] = useState('');
-  const [guests, setGuests] = useState<GuestWithCollision[]>([]);
+  const [guests, setGuests] = useState<GuestEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingCollisions, setIsCheckingCollisions] = useState(false);
 
-  const addGuest = async () => {
+  const addGuest = () => {
     if (!guestInput.trim()) return;
     
-    const username = guestInput.trim().replace('@', '');
+    const username = guestInput.trim().replace('@', '').toLowerCase();
     
+    // Check if already added
     if (guests.find(g => g.username === username)) {
       setGuestInput('');
       return;
     }
 
-    const newGuest: GuestWithCollision = {
-      telegram_id: 0,
-      username,
-      first_name: username,
-      selected: true,
-    };
+    // Don't add self
+    if (username === currentUser.username?.toLowerCase()) {
+      setGuestInput('');
+      return;
+    }
 
-    setGuests([...guests, newGuest]);
+    setGuests([...guests, { username, selected: true }]);
     setGuestInput('');
   };
 
+  // Check collisions when guests change
   useEffect(() => {
     const checkGuestCollisions = async () => {
-      if (guests.length === 0) return;
+      const usernames = guests.filter(g => !g.collision).map(g => g.username);
+      if (usernames.length === 0) return;
       
-      const telegramIds = guests.filter(g => g.telegram_id > 0).map(g => g.telegram_id);
-      if (telegramIds.length > 0) {
-        const collisions = await checkCollisions(telegramIds, format(selectedDate, 'yyyy-MM-dd'));
+      setIsCheckingCollisions(true);
+      
+      try {
+        const collisions = await checkCollisions(usernames, format(selectedDate, 'yyyy-MM-dd'));
         
-        setGuests(prev => prev.map(g => {
-          const collision = collisions.find(c => c.telegram_id === g.telegram_id);
-          return {
-            ...g,
-            collision: collision ? { 
-              host_username: collision.host_username, 
-              status: collision.status 
-            } : undefined,
-          };
-        }));
+        if (collisions.length > 0) {
+          setGuests(prev => prev.map(g => {
+            const collision = collisions.find(c => c.username === g.username);
+            return collision ? { ...g, collision: { host_username: collision.host_username, status: collision.status } } : g;
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to check collisions:', error);
+      } finally {
+        setIsCheckingCollisions(false);
       }
     };
 
-    checkGuestCollisions();
+    const timer = setTimeout(checkGuestCollisions, 500);
+    return () => clearTimeout(timer);
   }, [guests.length, selectedDate]);
 
   const toggleGuest = (username: string) => {
@@ -97,20 +100,20 @@ export function CreateEventModal({
     setIsLoading(true);
     
     try {
+      // Create event
       const event = await createEvent(
         currentUser.id,
         format(selectedDate, 'yyyy-MM-dd'),
         iftarTime,
-        location,
-        address,
-        notes
+        location || undefined,
+        address || undefined,
+        notes || undefined
       );
 
-      const selectedGuests = guests.filter(g => g.selected && g.telegram_id > 0);
-      
-      if (selectedGuests.length > 0) {
-        const users = await getUsersByTelegramIds(selectedGuests.map(g => g.telegram_id));
-        await createInvitations(event.id, users.map(u => u.id));
+      // Create invitations for selected guests
+      const selectedUsernames = guests.filter(g => g.selected).map(g => g.username);
+      if (selectedUsernames.length > 0) {
+        await createInvitationsByUsername(event.id, selectedUsernames);
       }
 
       onEventCreated();
@@ -125,6 +128,7 @@ export function CreateEventModal({
   if (!isOpen) return null;
 
   const hasCollisions = guests.some(g => g.collision && g.selected);
+  const selectedCount = guests.filter(g => g.selected).length;
 
   return (
     <div className="modal-overlay">
@@ -209,7 +213,8 @@ export function CreateEventModal({
           <div>
             <label className="text-muted" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', marginBottom: '8px' }}>
               <Users size={16} />
-              Гости
+              Гости {selectedCount > 0 && `(${selectedCount})`}
+              {isCheckingCollisions && <Loader size={14} className="animate-spin" />}
             </label>
             
             <div style={{ display: 'flex', gap: '8px' }}>
@@ -217,7 +222,7 @@ export function CreateEventModal({
                 type="text"
                 value={guestInput}
                 onChange={e => setGuestInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && addGuest()}
+                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addGuest())}
                 placeholder="@username"
                 className="input"
                 style={{ flex: 1 }}
@@ -237,7 +242,7 @@ export function CreateEventModal({
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <button
-                        onClick={() => toggleGuest(guest.username!)}
+                        onClick={() => toggleGuest(guest.username)}
                         style={{
                           width: '20px',
                           height: '20px',
@@ -265,7 +270,7 @@ export function CreateEventModal({
                     </div>
                     
                     <button
-                      onClick={() => removeGuest(guest.username!)}
+                      onClick={() => removeGuest(guest.username)}
                       className="btn btn-ghost"
                       style={{ padding: '4px' }}
                     >
@@ -275,6 +280,10 @@ export function CreateEventModal({
                 ))}
               </div>
             )}
+
+            <p className="text-muted" style={{ fontSize: '12px', marginTop: '8px' }}>
+              Добавь гостей по их Telegram username. После создания события поделись ссылкой.
+            </p>
           </div>
 
           {/* Collision warning */}
@@ -291,7 +300,7 @@ export function CreateEventModal({
               <AlertTriangle size={20} color="#eab308" style={{ flexShrink: 0, marginTop: '2px' }} />
               <div style={{ fontSize: '14px', color: '#eab308' }}>
                 Некоторые гости уже приглашены на эту дату. 
-                Вы можете убрать их из списка или отправить приглашение всё равно.
+                Можешь убрать их из списка или пригласить всё равно.
               </div>
             </div>
           )}
@@ -303,7 +312,7 @@ export function CreateEventModal({
             className="btn btn-primary"
             style={{ width: '100%', padding: '16px', fontSize: '16px' }}
           >
-            {isLoading ? 'Создаю...' : 'Создать ифтар'}
+            {isLoading ? 'Создаю...' : 'Создать ифтар 🌙'}
           </button>
         </div>
       </div>

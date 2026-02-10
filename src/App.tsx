@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Calendar } from './components/Calendar';
 import { CreateEventModal } from './components/CreateEventModal';
 import { EventDetails } from './components/EventDetails';
+import { useToast } from './components/Toast';
 import { 
   getOrCreateUser, 
   getUserEvents, 
@@ -24,6 +25,22 @@ function App() {
   const [selectedEvent, setSelectedEvent] = useState<(Event & { invitations?: any[] }) | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [iftarTime, setIftarTime] = useState<string>('18:30');
+  const { showToast, ToastContainer } = useToast();
+
+  // Handle deep links
+  const handleDeepLink = useCallback(async (eventId: string) => {
+    try {
+      const details = await getEventDetails(eventId);
+      if (details) {
+        setSelectedEvent(details);
+      } else {
+        showToast('Приглашение не найдено', 'error');
+      }
+    } catch (error) {
+      console.error('Failed to load event:', error);
+      showToast('Ошибка загрузки', 'error');
+    }
+  }, [showToast]);
 
   useEffect(() => {
     const initTelegram = async () => {
@@ -47,14 +64,14 @@ function App() {
             setUser(dbUser);
           }
 
-          // Handle start_param deep link (event_<id>)
+          // Handle Telegram start_param deep link
           const startParam = initData?.start_param;
           if (startParam?.startsWith('event_')) {
             const eventId = startParam.replace('event_', '');
-            const details = await getEventDetails(eventId);
-            setSelectedEvent(details);
+            await handleDeepLink(eventId);
           }
         } else {
+          // Development mode
           const mockUser = await getOrCreateUser({
             id: 123456789,
             username: 'dev_user',
@@ -63,22 +80,22 @@ function App() {
           setUser(mockUser);
         }
 
-        // Handle URL param deep link (?event=<id>)
+        // Handle URL query param deep link
         const params = new URLSearchParams(window.location.search);
         const eventId = params.get('event');
         if (eventId) {
-          const details = await getEventDetails(eventId);
-          setSelectedEvent(details);
+          await handleDeepLink(eventId);
         }
       } catch (error) {
         console.error('Failed to initialize:', error);
+        showToast('Ошибка инициализации', 'error');
       } finally {
         setIsLoading(false);
       }
     };
 
     initTelegram();
-  }, []);
+  }, [handleDeepLink, showToast]);
 
   const loadEvents = useCallback(async () => {
     if (!user) return;
@@ -105,9 +122,12 @@ function App() {
     if (eventOnDate) {
       try {
         const details = await getEventDetails(eventOnDate.id);
-        setSelectedEvent(details);
+        if (details) {
+          setSelectedEvent(details);
+        }
       } catch (error) {
         console.error('Failed to load event details:', error);
+        showToast('Ошибка загрузки события', 'error');
       }
     } else {
       setIsCreateModalOpen(true);
@@ -117,13 +137,26 @@ function App() {
   const handleEventCreated = () => {
     loadEvents();
     setSelectedDate(null);
+    showToast('Ифтар создан! 🌙', 'success');
   };
 
   const handleEventUpdated = () => {
     loadEvents();
     if (selectedEvent) {
-      getEventDetails(selectedEvent.id).then(setSelectedEvent);
+      getEventDetails(selectedEvent.id).then(details => {
+        if (details) setSelectedEvent(details);
+      });
     }
+  };
+
+  const handleRSVP = (status: string) => {
+    handleEventUpdated();
+    const messages: Record<string, string> = {
+      accepted: 'Отлично! Ты придёшь 🎉',
+      declined: 'Понял, не сможешь',
+      maybe: 'Записал как "может быть"',
+    };
+    showToast(messages[status] || 'Ответ записан', 'success');
   };
 
   useEffect(() => {
@@ -197,7 +230,7 @@ function App() {
                 .map(event => (
                   <div
                     key={event.id}
-                    onClick={() => getEventDetails(event.id).then(setSelectedEvent)}
+                    onClick={() => getEventDetails(event.id).then(details => details && setSelectedEvent(details))}
                     className="event-card"
                   >
                     <div>
@@ -211,8 +244,16 @@ function App() {
                         {event.location || 'Место не указано'}
                       </div>
                     </div>
-                    <span className={`badge ${event.host_id === user?.id ? 'badge-primary' : 'badge-gold'}`}>
-                      {event.host_id === user?.id ? 'Хозяин' : 'Гость'}
+                    <span className={`badge ${
+                      event.host_id === user?.id ? 'badge-primary' : 
+                      event.invitation_status === 'accepted' ? 'badge-primary' :
+                      event.invitation_status === 'pending' ? 'badge-gold' :
+                      'badge-indigo'
+                    }`}>
+                      {event.host_id === user?.id ? 'Хозяин' : 
+                       event.invitation_status === 'accepted' ? 'Иду' :
+                       event.invitation_status === 'pending' ? 'Ожидает' :
+                       'Может быть'}
                     </span>
                   </div>
                 ))}
@@ -235,7 +276,7 @@ function App() {
       {/* FAB */}
       <button
         onClick={() => {
-          setSelectedDate(new Date());
+          setSelectedDate(RAMADAN_2026_START);
           setIsCreateModalOpen(true);
         }}
         className="fab safe-area-bottom"
@@ -263,9 +304,13 @@ function App() {
           currentUser={user}
           onClose={() => setSelectedEvent(null)}
           onUpdate={handleEventUpdated}
+          onRSVP={handleRSVP}
           isHost={selectedEvent.host_id === user.id}
         />
       )}
+
+      {/* Toast notifications */}
+      <ToastContainer />
     </div>
   );
 }

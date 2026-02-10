@@ -1,8 +1,8 @@
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { X, MapPin, Clock, User, Check, X as XIcon, HelpCircle, Share2 } from 'lucide-react';
+import { X, MapPin, Clock, User, Check, X as XIcon, HelpCircle, Share2, Trash2 } from 'lucide-react';
 import type { Event, Invitation, User as UserType } from '../lib/supabase';
-import { respondToInvitation } from '../lib/supabase';
+import { respondToInvitation, deleteEvent, removeInvitation } from '../lib/supabase';
 import { useState } from 'react';
 
 interface EventDetailsProps {
@@ -10,11 +10,14 @@ interface EventDetailsProps {
   currentUser: UserType;
   onClose: () => void;
   onUpdate: () => void;
+  onRSVP?: (status: string) => void;
   isHost: boolean;
 }
 
-export function EventDetails({ event, currentUser, onClose, onUpdate, isHost }: EventDetailsProps) {
+export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, isHost }: EventDetailsProps) {
   const [isResponding, setIsResponding] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const myInvitation = event.invitations?.find(
     inv => inv.guest_id === currentUser.id
@@ -27,10 +30,33 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, isHost }: 
     try {
       await respondToInvitation(myInvitation.id, status);
       onUpdate();
+      onRSVP?.(status);
     } catch (error) {
       console.error('Failed to respond:', error);
     } finally {
       setIsResponding(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await deleteEvent(event.id);
+      onClose();
+      onUpdate();
+    } catch (error) {
+      console.error('Failed to delete event:', error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleRemoveGuest = async (invitationId: string) => {
+    try {
+      await removeInvitation(invitationId);
+      onUpdate();
+    } catch (error) {
+      console.error('Failed to remove guest:', error);
     }
   };
 
@@ -48,6 +74,21 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, isHost }: 
 
   const acceptedCount = event.invitations?.filter(i => i.status === 'accepted').length || 0;
   const pendingCount = event.invitations?.filter(i => i.status === 'pending').length || 0;
+  const maybeCount = event.invitations?.filter(i => i.status === 'maybe').length || 0;
+
+  const statusColors: Record<string, string> = {
+    accepted: 'badge-primary',
+    pending: 'badge-gold',
+    maybe: 'badge-indigo',
+    declined: 'badge-red',
+  };
+
+  const statusLabels: Record<string, string> = {
+    accepted: 'Придёт',
+    pending: 'Ожидает',
+    maybe: 'Может быть',
+    declined: 'Не придёт',
+  };
 
   return (
     <div className="modal-overlay">
@@ -126,7 +167,11 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, isHost }: 
             <div>
               <div className="text-muted" style={{ fontSize: '14px', display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
                 <span>Гости</span>
-                <span>{acceptedCount} придут • {pendingCount} ожидают</span>
+                <span>
+                  {acceptedCount > 0 && `${acceptedCount} придут`}
+                  {pendingCount > 0 && ` • ${pendingCount} ожидают`}
+                  {maybeCount > 0 && ` • ${maybeCount} может`}
+                </span>
               </div>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -157,18 +202,21 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, isHost }: 
                         {(invitation.guest?.first_name?.[0] || invitation.guest?.username?.[0] || '?').toUpperCase()}
                       </div>
                       <span>
-                        {invitation.guest?.first_name || invitation.guest?.username}
+                        {invitation.guest?.first_name || invitation.guest?.username || 'Гость'}
                       </span>
                     </div>
-                    <span className={`badge ${
-                      invitation.status === 'accepted' ? 'badge-primary' : 
-                      invitation.status === 'pending' ? 'badge-gold' : 
-                      invitation.status === 'maybe' ? 'badge-indigo' : 'badge-red'
-                    }`}>
-                      {invitation.status === 'accepted' ? 'Придёт' : 
-                       invitation.status === 'pending' ? 'Ожидает' : 
-                       invitation.status === 'maybe' ? 'Может' : 'Не придёт'}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className={`badge ${statusColors[invitation.status] || 'badge-gold'}`}>
+                        {statusLabels[invitation.status] || invitation.status}
+                      </span>
+                      <button
+                        onClick={() => handleRemoveGuest(invitation.id)}
+                        className="btn btn-ghost"
+                        style={{ padding: '4px' }}
+                      >
+                        <X size={14} className="text-muted" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -178,7 +226,9 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, isHost }: 
           {/* Response buttons (for guest) */}
           {!isHost && myInvitation && (
             <div>
-              <div className="text-muted" style={{ fontSize: '14px', marginBottom: '12px' }}>Ваш ответ</div>
+              <div className="text-muted" style={{ fontSize: '14px', marginBottom: '12px' }}>
+                Твой ответ {myInvitation.status !== 'pending' && `(сейчас: ${statusLabels[myInvitation.status]})`}
+              </div>
               
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
                 <button
@@ -236,6 +286,53 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, isHost }: 
               <Share2 size={20} />
               Поделиться приглашением
             </button>
+          )}
+
+          {/* Delete button (for host) */}
+          {isHost && (
+            <>
+              {!showDeleteConfirm ? (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="btn btn-ghost"
+                  style={{ width: '100%', color: '#dc2626' }}
+                >
+                  <Trash2 size={20} />
+                  Удалить событие
+                </button>
+              ) : (
+                <div style={{ 
+                  backgroundColor: 'rgba(220, 38, 38, 0.1)', 
+                  border: '1px solid rgba(220, 38, 38, 0.3)', 
+                  borderRadius: '12px', 
+                  padding: '12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px'
+                }}>
+                  <p style={{ fontSize: '14px', color: '#dc2626', textAlign: 'center' }}>
+                    Удалить это событие? Все приглашения будут отменены.
+                  </p>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="btn btn-secondary"
+                      style={{ flex: 1 }}
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      onClick={handleDelete}
+                      disabled={isDeleting}
+                      className="btn"
+                      style={{ flex: 1, backgroundColor: '#dc2626' }}
+                    >
+                      {isDeleting ? 'Удаляю...' : 'Удалить'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

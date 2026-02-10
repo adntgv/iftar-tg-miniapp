@@ -13,7 +13,8 @@ interface CalendarProps {
 }
 
 export function Calendar({ events, onDateSelect, selectedDate, ramadanStart, ramadanEnd }: CalendarProps) {
-  const [currentMonth, setCurrentMonth] = useState(ramadanStart || new Date());
+  // Start with Ramadan month, not current month
+  const [currentMonth, setCurrentMonth] = useState(() => ramadanStart || new Date());
 
   const days = useMemo(() => {
     const start = startOfMonth(currentMonth);
@@ -27,24 +28,47 @@ export function Calendar({ events, onDateSelect, selectedDate, ramadanStart, ram
   // Adjust first day (Monday = 0)
   const adjustedFirstDay = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
 
-  const getEventForDate = (date: Date) => {
-    return events.find(event => isSameDay(new Date(event.date), date));
+  const getEventsForDate = (date: Date) => {
+    return events.filter(event => isSameDay(new Date(event.date), date));
   };
 
-  const getDayStatus = (date: Date) => {
-    const event = getEventForDate(date);
-    if (!event) return null;
+  const getDayStatus = (date: Date): string | null => {
+    const dayEvents = getEventsForDate(date);
+    if (dayEvents.length === 0) return null;
     
-    const invitationStatus = (event as any).invitation_status;
-    if (invitationStatus) {
-      return invitationStatus;
+    // Priority: hosting > accepted > pending > maybe
+    for (const event of dayEvents) {
+      if (!event.invitation_status) return 'hosting'; // User is host
     }
-    return 'hosting';
+    
+    for (const event of dayEvents) {
+      if (event.invitation_status === 'accepted') return 'accepted';
+    }
+    
+    for (const event of dayEvents) {
+      if (event.invitation_status === 'pending') return 'pending';
+    }
+    
+    for (const event of dayEvents) {
+      if (event.invitation_status === 'maybe') return 'maybe';
+    }
+    
+    return null;
   };
 
   const isInRamadan = (date: Date) => {
     if (!ramadanStart || !ramadanEnd) return true;
     return date >= ramadanStart && date <= ramadanEnd;
+  };
+
+  const canNavigatePrev = () => {
+    const prevMonth = subMonths(currentMonth, 1);
+    return !ramadanStart || endOfMonth(prevMonth) >= ramadanStart;
+  };
+
+  const canNavigateNext = () => {
+    const nextMonth = addMonths(currentMonth, 1);
+    return !ramadanEnd || startOfMonth(nextMonth) <= ramadanEnd;
   };
 
   return (
@@ -53,8 +77,9 @@ export function Calendar({ events, onDateSelect, selectedDate, ramadanStart, ram
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <button
           onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+          disabled={!canNavigatePrev()}
           className="btn btn-ghost"
-          style={{ padding: '8px' }}
+          style={{ padding: '8px', opacity: canNavigatePrev() ? 1 : 0.3 }}
         >
           <ChevronLeft size={20} />
         </button>
@@ -68,8 +93,9 @@ export function Calendar({ events, onDateSelect, selectedDate, ramadanStart, ram
         
         <button
           onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+          disabled={!canNavigateNext()}
           className="btn btn-ghost"
-          style={{ padding: '8px' }}
+          style={{ padding: '8px', opacity: canNavigateNext() ? 1 : 0.3 }}
         >
           <ChevronRight size={20} />
         </button>
@@ -97,6 +123,7 @@ export function Calendar({ events, onDateSelect, selectedDate, ramadanStart, ram
           const inRamadan = isInRamadan(day);
           const isSelected = selectedDate && isSameDay(day, selectedDate);
           const isTodayDate = isToday(day);
+          const hasEvents = getEventsForDate(day).length > 0;
 
           const classNames = [
             'day-cell',
@@ -113,7 +140,7 @@ export function Calendar({ events, onDateSelect, selectedDate, ramadanStart, ram
               className={classNames}
             >
               <span>{format(day, 'd')}</span>
-              {status && <span className={`status-dot ${status}`} />}
+              {hasEvents && <span className={`status-dot ${status || 'hosting'}`} />}
             </button>
           );
         })}
@@ -123,10 +150,10 @@ export function Calendar({ events, onDateSelect, selectedDate, ramadanStart, ram
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginTop: '16px', fontSize: '12px' }} className="text-muted">
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
-          <span>Приглашаю</span>
+          <span>Хозяин</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#16a34a' }} />
           <span>Иду</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
