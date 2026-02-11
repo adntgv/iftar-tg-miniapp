@@ -3,26 +3,76 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/moon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0f1419" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Iftar App — Рамадан 2026</title>
-    <!-- Telegram Web App Script -->
+    
+    <!-- Preconnect for faster API calls -->
+    <link rel="preconnect" href="https://fjmriicjrvypzamxlhdi.supabase.co" />
+    <link rel="dns-prefetch" href="https://fjmriicjrvypzamxlhdi.supabase.co" />
+    
+    <!-- Telegram Web App Script (preload) -->
+    <link rel="preload" href="https://telegram.org/js/telegram-web-app.js" as="script" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <!-- Inline critical CSS -->
     <style>
-      body {
+      * { box-sizing: border-box; }
+      html, body {
         margin: 0;
         padding: 0;
         background-color: #0f1419;
         color: #ffffff;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+      html {
+        height: 100%;
+        height: -webkit-fill-available;
+      }
+      body {
+        min-height: 100%;
+        min-height: 100vh;
+        min-height: -webkit-fill-available;
       }
       #root {
         min-height: 100vh;
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+      }
+      /* Loading state */
+      .app-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        min-height: 100dvh;
+      }
+      .app-loading svg {
+        width: 48px;
+        height: 48px;
+        color: #d4af37;
+        animation: pulse 2s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
       }
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Loading placeholder -->
+      <div class="app-loading">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+        </svg>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -50,6 +50,8 @@ function App() {
         if (tg) {
           tg.ready();
           tg.expand();
+          tg.requestFullscreen?.();
+          tg.disableVerticalSwipes?.();
 
           const initData = tg.initDataUnsafe;
           if (initData?.user) {
@@ -322,6 +324,8 @@ declare global {
         ready: () => void;
         expand: () => void;
         close: () => void;
+        requestFullscreen?: () => void;
+        disableVerticalSwipes?: () => void;
         openTelegramLink: (url: string) => void;
         themeParams: {
           bg_color?: string;
