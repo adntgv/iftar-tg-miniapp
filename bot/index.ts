@@ -83,31 +83,52 @@ bot.command('start', async (ctx) => {
       }
     }
 
-    const hostName = event.host?.first_name || event.host?.username || 'Кто-то';
+    const hostName = event.host?.first_name || event.host?.username || 'Друг';
     const location = event.location || 'Уточняется';
     const time = event.iftar_time ? event.iftar_time.slice(0, 5) : '';
+    const address = event.address || '';
+    
+    // Calculate Ramadan day (Feb 17, 2026 = 1 Ramadan)
+    const ramadanStart = new Date('2026-02-17');
+    const ramadanDay = Math.floor((eventDate.getTime() - ramadanStart.getTime()) / (24 * 60 * 60 * 1000)) + 1;
 
     const keyboard = new InlineKeyboard()
-      .text('✅ Приду', `rsvp:${eventId}:accepted`)
+      .text('✅ Приду!', `rsvp:${eventId}:accepted`)
       .text('❌ Не смогу', `rsvp:${eventId}:declined`)
       .row()
-      .text('🤔 Может быть', `rsvp:${eventId}:maybe`)
+      .text('🤔 Пока не знаю', `rsvp:${eventId}:maybe`)
       .row()
       .webApp('📅 Открыть календарь', MINI_APP_URL);
 
-    await ctx.reply(
-      `🌙 *Приглашение на ифтар*\n\n` +
-      `👤 От: ${hostName}\n` +
-      `📅 Дата: ${dateStr}\n` +
-      `${time ? `🕐 Время: ${time}\n` : ''}` +
-      `📍 Место: ${location}\n` +
-      `${event.notes ? `\n📝 ${event.notes}` : ''}\n\n` +
-      `Ты пойдёшь?`,
-      { 
-        parse_mode: 'Markdown',
-        reply_markup: keyboard 
-      }
-    );
+    // Beautiful invitation message
+    const inviteMessage = 
+      `╭─────────────────────╮\n` +
+      `│    🌙 *ПРИГЛАШЕНИЕ*    │\n` +
+      `│        *НА ИФТАР*        │\n` +
+      `╰─────────────────────╯\n\n` +
+      
+      `✨ *${hostName}* приглашает тебя\n` +
+      `разделить ифтар вместе!\n\n` +
+      
+      `┌───────────────────┐\n` +
+      `│ 📅  *${ramadanDay} Рамадан*\n` +
+      `│      ${dateStr}\n` +
+      `│\n` +
+      `│ ⏰  *${time || '—'}*\n` +
+      `│\n` +
+      `│ 📍  *${location}*\n` +
+      `${address ? `│      ${address}\n` : ''}` +
+      `└───────────────────┘\n` +
+      
+      `${event.notes ? `\n💬 _"${event.notes}"_\n` : ''}` +
+      `\n` +
+      `─────────────────────\n` +
+      `      *Ты придёшь?* 👇`;
+
+    await ctx.reply(inviteMessage, { 
+      parse_mode: 'Markdown',
+      reply_markup: keyboard 
+    });
   } else {
     // Regular start
     const keyboard = new InlineKeyboard()
