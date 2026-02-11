@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100">
+  <defs>
+    <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f4d03f;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#d4af37;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#b8860b;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <text 
+    x="200" 
+    y="60" 
+    text-anchor="middle" 
+    font-family="Amiri, 'Traditional Arabic', serif" 
+    font-size="42" 
+    fill="url(#goldGradient)"
+    filter="url(#glow)"
+    style="direction: rtl;"
+  >بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</text>
+</svg>

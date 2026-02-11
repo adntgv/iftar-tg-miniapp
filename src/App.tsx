@@ -177,10 +177,26 @@ function App() {
 
   if (isLoading) {
     return (
-      <div className="bg-dark" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="bg-dark" style={{ 
+        minHeight: '100dvh',
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        flexDirection: 'column',
+        gap: '24px',
+        padding: '24px'
+      }}>
+        <img 
+          src="/bismillah.svg" 
+          alt="بسم الله الرحمن الرحيم" 
+          style={{ 
+            width: '280px', 
+            maxWidth: '80%',
+            animation: 'fadeInScale 1s ease-out'
+          }} 
+        />
         <div style={{ textAlign: 'center' }}>
-          <Moon size={48} className="text-gold animate-pulse" />
-          <p className="text-muted" style={{ marginTop: '16px' }}>Загрузка...</p>
+          <Moon size={32} className="text-gold animate-pulse" />
         </div>
       </div>
     );
