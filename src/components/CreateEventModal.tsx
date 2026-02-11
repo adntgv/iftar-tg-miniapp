@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { X, MapPin, Clock, ChevronDown, ChevronUp, AlertTriangle, Check, Loader } from 'lucide-react';
+import { X, MapPin, Clock, ChevronDown, ChevronUp, AlertTriangle, Check, Loader, Share2 } from 'lucide-react';
 import { checkCollisions, createEvent, createInvitationsByUsername, type User } from '../lib/supabase';
+import { getIftarTime, getRamadanDay } from '../lib/iftarTimes';
 
 interface CreateEventModalProps {
   isOpen: boolean;
@@ -31,12 +32,18 @@ export function CreateEventModal({
   const [location, setLocation] = useState('');
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
-  const [iftarTime, setIftarTime] = useState('18:30');
+  const [iftarTime, setIftarTime] = useState(() => getIftarTime(selectedDate));
   const [guestInput, setGuestInput] = useState('');
   const [guests, setGuests] = useState<GuestEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingCollisions, setIsCheckingCollisions] = useState(false);
   const [showAdditional, setShowAdditional] = useState(false);
+  const [createdEventId, setCreatedEventId] = useState<string | null>(null);
+
+  // Update iftar time when date changes
+  useEffect(() => {
+    setIftarTime(getIftarTime(selectedDate));
+  }, [selectedDate]);
 
   const addGuest = () => {
     if (!guestInput.trim()) return;
@@ -114,12 +121,25 @@ export function CreateEventModal({
         await createInvitationsByUsername(event.id, selectedUsernames);
       }
 
+      setCreatedEventId(event.id);
       onEventCreated();
-      onClose();
     } catch (error) {
       console.error('Failed to create event:', error);
-    } finally {
       setIsLoading(false);
+    }
+  };
+
+  const shareEvent = () => {
+    if (!createdEventId) return;
+    
+    const botUsername = import.meta.env.VITE_BOT_USERNAME || 'iftar_coordinator_bot';
+    const shareUrl = `https://t.me/${botUsername}?start=event_${createdEventId}`;
+    const shareText = `🌙 Приглашение на ифтар\n📅 ${format(selectedDate, 'd MMMM', { locale: ru })} (${getRamadanDay(selectedDate)} Рамадан)\n⏰ ${iftarTime}\n📍 ${location}`;
+    
+    if (window.Telegram?.WebApp) {
+      window.Telegram.WebApp.openTelegramLink(
+        `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`
+      );
     }
   };
 
@@ -127,11 +147,61 @@ export function CreateEventModal({
 
   const hasCollisions = guests.some(g => g.collision && g.selected);
   const selectedCount = guests.filter(g => g.selected).length;
+  const ramadanDay = getRamadanDay(selectedDate);
+
+  // Success screen after event creation
+  if (createdEventId) {
+    return (
+      <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+        <div className="modal-content" style={{ textAlign: 'center', padding: '32px 24px' }}>
+          {/* Success animation */}
+          <div style={{ 
+            width: '80px', 
+            height: '80px', 
+            margin: '0 auto 20px',
+            borderRadius: '50%',
+            backgroundColor: 'rgba(22, 101, 52, 0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            animation: 'pulse 2s ease-in-out infinite'
+          }}>
+            <span style={{ fontSize: '40px' }}>🌙</span>
+          </div>
+          
+          <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '8px' }}>
+            Ифтар создан!
+          </h2>
+          
+          <p className="text-muted" style={{ marginBottom: '24px' }}>
+            {format(selectedDate, 'd MMMM', { locale: ru })} • {ramadanDay} Рамадан • {iftarTime}
+          </p>
+
+          <button
+            onClick={shareEvent}
+            className="btn btn-primary"
+            style={{ width: '100%', padding: '14px', marginBottom: '12px' }}
+          >
+            <Share2 size={20} />
+            Пригласить друзей
+          </button>
+          
+          <button
+            onClick={onClose}
+            className="btn btn-ghost"
+            style={{ width: '100%', padding: '12px' }}
+          >
+            Закрыть
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-content">
-        {/* Compact header */}
+        {/* Compact header with Ramadan day */}
         <div style={{ 
           display: 'flex', 
           alignItems: 'center', 
@@ -139,9 +209,14 @@ export function CreateEventModal({
           padding: '12px 16px',
           borderBottom: '1px solid var(--color-border)'
         }}>
-          <span style={{ fontSize: '16px', fontWeight: 600 }}>
-            {format(selectedDate, 'd MMMM', { locale: ru })}
-          </span>
+          <div>
+            <span style={{ fontSize: '16px', fontWeight: 600 }}>
+              {ramadanDay} Рамадан
+            </span>
+            <span className="text-muted" style={{ fontSize: '14px', marginLeft: '8px' }}>
+              {format(selectedDate, 'd MMM', { locale: ru })}
+            </span>
+          </div>
           <button onClick={onClose} className="btn btn-ghost" style={{ padding: '4px' }}>
             <X size={20} />
           </button>

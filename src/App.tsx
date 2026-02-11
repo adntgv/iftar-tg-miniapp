@@ -13,10 +13,6 @@ import {
 import { Moon } from 'lucide-react';
 import './index.css';
 
-// Ramadan 2026 dates
-const RAMADAN_2026_START = new Date('2026-02-17');
-const RAMADAN_2026_END = new Date('2026-03-18');
-
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
@@ -192,33 +188,15 @@ function App() {
 
   return (
     <div className="bg-dark" style={{ minHeight: '100dvh' }}>
-      {/* Compact header */}
-      <header style={{ 
-        padding: '12px 16px', 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between',
-        borderBottom: '1px solid var(--color-border)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Moon size={20} className="text-gold" />
-          <span style={{ fontSize: '16px', fontWeight: 600 }}>Рамадан 2026</span>
-        </div>
-        {user && (
-          <span className="text-muted" style={{ fontSize: '14px' }}>
-            {user.first_name || user.username}
-          </span>
-        )}
-      </header>
+      {/* Spacer for Telegram header buttons */}
+      <div style={{ height: 'calc(var(--tg-content-safe-area-inset-top, 0px) + var(--tg-safe-area-inset-top, 0px))' }} />
 
       {/* Main content */}
-      <main style={{ padding: '16px' }}>
+      <main style={{ padding: '12px' }}>
         <Calendar
           events={events}
           onDateSelect={handleDateSelect}
           selectedDate={selectedDate}
-          ramadanStart={RAMADAN_2026_START}
-          ramadanEnd={RAMADAN_2026_END}
         />
 
         {/* Upcoming events */}

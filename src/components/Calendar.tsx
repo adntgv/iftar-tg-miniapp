@@ -1,32 +1,21 @@
-import { useState, useMemo } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, addMonths, subMonths } from 'date-fns';
+import { useMemo } from 'react';
+import { format, eachDayOfInterval, isSameDay, isToday } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Moon } from 'lucide-react';
+import { Moon } from 'lucide-react';
 import type { Event } from '../lib/supabase';
+import { RAMADAN_START, RAMADAN_END, getRamadanDay, getIftarTime } from '../lib/iftarTimes';
 
 interface CalendarProps {
   events: Event[];
   onDateSelect: (date: Date) => void;
   selectedDate: Date | null;
-  ramadanStart?: Date;
-  ramadanEnd?: Date;
 }
 
-export function Calendar({ events, onDateSelect, selectedDate, ramadanStart, ramadanEnd }: CalendarProps) {
-  // Start with Ramadan month, not current month
-  const [currentMonth, setCurrentMonth] = useState(() => ramadanStart || new Date());
-
-  const days = useMemo(() => {
-    const start = startOfMonth(currentMonth);
-    const end = endOfMonth(currentMonth);
-    return eachDayOfInterval({ start, end });
-  }, [currentMonth]);
-
-  const firstDayOfWeek = startOfMonth(currentMonth).getDay();
-  const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-
-  // Adjust first day (Monday = 0)
-  const adjustedFirstDay = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+export function Calendar({ events, onDateSelect, selectedDate }: CalendarProps) {
+  // Get all Ramadan days
+  const ramadanDays = useMemo(() => {
+    return eachDayOfInterval({ start: RAMADAN_START, end: RAMADAN_END });
+  }, []);
 
   const getEventsForDate = (date: Date) => {
     return events.filter(event => isSameDay(new Date(event.date), date));
@@ -36,133 +25,126 @@ export function Calendar({ events, onDateSelect, selectedDate, ramadanStart, ram
     const dayEvents = getEventsForDate(date);
     if (dayEvents.length === 0) return null;
     
-    // Priority: hosting > accepted > pending > maybe
     for (const event of dayEvents) {
-      if (!event.invitation_status) return 'hosting'; // User is host
+      if (!event.invitation_status) return 'hosting';
     }
-    
     for (const event of dayEvents) {
       if (event.invitation_status === 'accepted') return 'accepted';
     }
-    
     for (const event of dayEvents) {
       if (event.invitation_status === 'pending') return 'pending';
     }
-    
     for (const event of dayEvents) {
       if (event.invitation_status === 'maybe') return 'maybe';
     }
-    
     return null;
   };
 
-  const isInRamadan = (date: Date) => {
-    if (!ramadanStart || !ramadanEnd) return true;
-    return date >= ramadanStart && date <= ramadanEnd;
-  };
-
-  const canNavigatePrev = () => {
-    const prevMonth = subMonths(currentMonth, 1);
-    return !ramadanStart || endOfMonth(prevMonth) >= ramadanStart;
-  };
-
-  const canNavigateNext = () => {
-    const nextMonth = addMonths(currentMonth, 1);
-    return !ramadanEnd || startOfMonth(nextMonth) <= ramadanEnd;
-  };
-
   return (
-    <div className="card">
+    <div className="card" style={{ padding: '12px' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-        <button
-          onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-          disabled={!canNavigatePrev()}
-          className="btn btn-ghost"
-          style={{ padding: '8px', opacity: canNavigatePrev() ? 1 : 0.3 }}
-        >
-          <ChevronLeft size={20} />
-        </button>
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Moon size={20} className="text-gold" />
-          <span style={{ fontWeight: 600, fontSize: '18px' }}>
-            {format(currentMonth, 'LLLL yyyy', { locale: ru })}
-          </span>
-        </div>
-        
-        <button
-          onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-          disabled={!canNavigateNext()}
-          className="btn btn-ghost"
-          style={{ padding: '8px', opacity: canNavigateNext() ? 1 : 0.3 }}
-        >
-          <ChevronRight size={20} />
-        </button>
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        gap: '8px',
+        marginBottom: '12px'
+      }}>
+        <Moon size={18} className="text-gold" />
+        <span style={{ fontWeight: 600 }}>Рамадан 1447</span>
+        <span className="text-muted" style={{ fontSize: '14px' }}>
+          (17 фев — 18 мар)
+        </span>
       </div>
 
-      {/* Week days header */}
-      <div className="calendar-grid" style={{ marginBottom: '8px' }}>
-        {weekDays.map(day => (
-          <div key={day} className="text-muted" style={{ textAlign: 'center', fontSize: '12px', padding: '8px 0' }}>
-            {day}
-          </div>
-        ))}
-      </div>
-
-      {/* Days grid */}
-      <div className="calendar-grid">
-        {/* Empty cells for alignment */}
-        {Array.from({ length: adjustedFirstDay }).map((_, i) => (
-          <div key={`empty-${i}`} style={{ aspectRatio: '1' }} />
-        ))}
-
-        {/* Actual days */}
-        {days.map(day => {
+      {/* Days grid - Ramadan days only */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(5, 1fr)', 
+        gap: '6px' 
+      }}>
+        {ramadanDays.map(day => {
           const status = getDayStatus(day);
-          const inRamadan = isInRamadan(day);
           const isSelected = selectedDate && isSameDay(day, selectedDate);
           const isTodayDate = isToday(day);
           const hasEvents = getEventsForDate(day).length > 0;
-
-          const classNames = [
-            'day-cell',
-            isTodayDate && 'today',
-            isSelected && 'selected',
-            status,
-          ].filter(Boolean).join(' ');
+          const ramadanDay = getRamadanDay(day);
+          const iftarTime = getIftarTime(day);
 
           return (
             <button
               key={day.toISOString()}
               onClick={() => onDateSelect(day)}
-              disabled={!inRamadan}
-              className={classNames}
+              style={{
+                padding: '8px 4px',
+                borderRadius: '10px',
+                border: isTodayDate ? '2px solid var(--color-gold)' : 'none',
+                backgroundColor: status === 'hosting' ? 'rgba(22, 101, 52, 0.4)' :
+                                status === 'accepted' ? 'rgba(34, 197, 94, 0.3)' :
+                                status === 'pending' ? 'rgba(212, 175, 55, 0.3)' :
+                                status === 'maybe' ? 'rgba(99, 102, 241, 0.3)' :
+                                isSelected ? 'var(--color-border)' : 'transparent',
+                boxShadow: isSelected ? '0 0 0 2px var(--color-gold)' : 
+                           status ? '0 0 12px rgba(22, 101, 52, 0.3)' : 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '2px',
+                position: 'relative',
+                color: 'var(--color-text)',
+              }}
             >
-              <span>{format(day, 'd')}</span>
-              {hasEvents && <span className={`status-dot ${status || 'hosting'}`} />}
+              {/* Ramadan day number */}
+              <span style={{ fontSize: '16px', fontWeight: 600 }}>{ramadanDay}</span>
+              
+              {/* Gregorian date */}
+              <span className="text-muted" style={{ fontSize: '10px' }}>
+                {format(day, 'd MMM', { locale: ru })}
+              </span>
+              
+              {/* Iftar time - smaller */}
+              <span className="text-gold" style={{ fontSize: '9px' }}>
+                {iftarTime}
+              </span>
+              
+              {/* Event indicator */}
+              {hasEvents && (
+                <span style={{
+                  position: 'absolute',
+                  top: '4px',
+                  right: '4px',
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  backgroundColor: status === 'hosting' || status === 'accepted' ? '#22c55e' :
+                                   status === 'pending' ? 'var(--color-gold)' : '#6366f1',
+                }} />
+              )}
             </button>
           );
         })}
       </div>
 
-      {/* Legend */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginTop: '16px', fontSize: '12px' }} className="text-muted">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
-          <span>Хозяин</span>
+      {/* Legend - compact */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center',
+        gap: '12px', 
+        marginTop: '12px', 
+        fontSize: '11px' 
+      }} className="text-muted">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
+          <span>Хозяин/Иду</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#16a34a' }} />
-          <span>Иду</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#d4af37' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--color-gold)' }} />
           <span>Ожидает</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#6366f1' }} />
-          <span>Может быть</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#6366f1' }} />
+          <span>Может</span>
         </div>
       </div>
     </div>
