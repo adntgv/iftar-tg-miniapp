@@ -1,9 +1,10 @@
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { X, MapPin, Clock, User, Check, X as XIcon, HelpCircle, Share2, Trash2 } from 'lucide-react';
+import { X, MapPin, Clock, User, Check, X as XIcon, HelpCircle, Share2, Trash2, Calendar } from 'lucide-react';
 import type { Event, Invitation, User as UserType } from '../lib/supabase';
 import { respondToInvitation, deleteEvent, removeInvitation } from '../lib/supabase';
 import { useState } from 'react';
+import { getRamadanDay, getIftarTime } from '../lib/iftarTimes';
 
 interface EventDetailsProps {
   event: Event & { invitations?: Invitation[] };
@@ -63,13 +64,45 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
   const shareEvent = () => {
     const botUsername = import.meta.env.VITE_BOT_USERNAME || 'iftar_coordinator_bot';
     const shareUrl = `https://t.me/${botUsername}?start=event_${event.id}`;
-    const shareText = `🌙 Приглашение на ифтар\n📅 ${format(new Date(event.date), 'd MMMM', { locale: ru })}\n📍 ${event.location || 'Уточняется'}`;
+    const ramadanDay = getRamadanDay(new Date(event.date));
+    const shareText = `🌙 Приглашение на ифтар\n📅 ${format(new Date(event.date), 'd MMMM', { locale: ru })} (${ramadanDay} Рамадан)\n📍 ${event.location || 'Уточняется'}`;
     
     if (window.Telegram?.WebApp) {
       window.Telegram.WebApp.openTelegramLink(
         `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`
       );
     }
+  };
+
+  const addToGoogleCalendar = () => {
+    const eventDate = new Date(event.date);
+    const iftarTime = event.iftar_time || getIftarTime(eventDate);
+    const [hours, minutes] = iftarTime.split(':').map(Number);
+    
+    // Event starts at iftar time, ends 2 hours later
+    const startDate = new Date(eventDate);
+    startDate.setHours(hours, minutes, 0, 0);
+    const endDate = new Date(startDate);
+    endDate.setHours(hours + 2);
+    
+    // Format for Google Calendar: YYYYMMDDTHHMMSS
+    const formatGoogleDate = (d: Date) => {
+      return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    };
+    
+    const ramadanDay = getRamadanDay(eventDate);
+    const title = `🌙 Ифтар (${ramadanDay} Рамадан)`;
+    const details = `Приглашение от ${event.host?.first_name || 'друга'}${event.notes ? `\n\n${event.notes}` : ''}`;
+    const location = event.address || event.location || '';
+    
+    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE` +
+      `&text=${encodeURIComponent(title)}` +
+      `&dates=${formatGoogleDate(startDate)}/${formatGoogleDate(endDate)}` +
+      `&details=${encodeURIComponent(details)}` +
+      `&location=${encodeURIComponent(location)}` +
+      `&ctz=Asia/Almaty`;
+    
+    window.open(url, '_blank');
   };
 
   const acceptedCount = event.invitations?.filter(i => i.status === 'accepted').length || 0;
@@ -275,6 +308,16 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
               </div>
             </div>
           )}
+
+          {/* Add to Google Calendar */}
+          <button
+            onClick={addToGoogleCalendar}
+            className="btn btn-secondary"
+            style={{ width: '100%' }}
+          >
+            <Calendar size={20} />
+            Добавить в Google Calendar
+          </button>
 
           {/* Share button */}
           {isHost && (

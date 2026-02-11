@@ -283,6 +283,86 @@ bot.on('inline_query', async (ctx) => {
   await ctx.answerInlineQuery(results);
 });
 
+// Send reminders for events happening tomorrow
+async function sendReminders() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+  console.log(`Checking reminders for ${tomorrowStr}...`);
+
+  // Get all events happening tomorrow
+  const { data: events } = await supabase
+    .from('events')
+    .select('*, host:users(*), invitations(*, guest:users(*))')
+    .eq('date', tomorrowStr);
+
+  if (!events || events.length === 0) {
+    console.log('No events tomorrow');
+    return;
+  }
+
+  for (const event of events) {
+    const eventDate = new Date(event.date);
+    const dateStr = eventDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+    const hostName = event.host?.first_name || 'Хозяин';
+
+    // Send reminder to accepted guests
+    for (const inv of event.invitations || []) {
+      if (inv.status === 'accepted' && inv.guest?.telegram_id) {
+        try {
+          await bot.api.sendMessage(
+            inv.guest.telegram_id,
+            `🔔 *Напоминание!*\n\n` +
+            `Завтра ифтар у ${hostName}!\n` +
+            `📅 ${dateStr}\n` +
+            `⏰ ${event.iftar_time || '18:00'}\n` +
+            `📍 ${event.location || 'Место уточняется'}`,
+            { parse_mode: 'Markdown' }
+          );
+          console.log(`Reminder sent to ${inv.guest.telegram_id}`);
+        } catch (e) {
+          console.error(`Failed to send reminder to ${inv.guest.telegram_id}:`, e);
+        }
+      }
+    }
+
+    // Send reminder to host about who's coming
+    const acceptedCount = (event.invitations || []).filter((i: any) => i.status === 'accepted').length;
+    const acceptedNames = (event.invitations || [])
+      .filter((i: any) => i.status === 'accepted')
+      .map((i: any) => i.guest?.first_name || i.guest?.username || 'Гость')
+      .join(', ');
+
+    if (event.host?.telegram_id) {
+      try {
+        await bot.api.sendMessage(
+          event.host.telegram_id,
+          `🔔 *Напоминание!*\n\n` +
+          `Завтра твой ифтар!\n` +
+          `📅 ${dateStr}\n` +
+          `⏰ ${event.iftar_time || '18:00'}\n` +
+          `👥 Придут (${acceptedCount}): ${acceptedNames || 'пока никто'}`,
+          { parse_mode: 'Markdown' }
+        );
+        console.log(`Host reminder sent to ${event.host.telegram_id}`);
+      } catch (e) {
+        console.error(`Failed to send host reminder:`, e);
+      }
+    }
+  }
+}
+
+// Command to manually trigger reminders (for testing)
+bot.command('send_reminders', async (ctx) => {
+  // Only allow from specific admin user
+  if (ctx.from?.id !== 289310951 && ctx.from?.id !== 6454712844) {
+    return;
+  }
+  await sendReminders();
+  await ctx.reply('✅ Напоминания отправлены');
+});
+
 // Start polling
 (async () => {
   try {
@@ -294,4 +374,5 @@ bot.on('inline_query', async (ctx) => {
   console.log('Bot started in polling mode');
 })();
 
-export { bot };
+// Export for external cron trigger
+export { bot, sendReminders };
