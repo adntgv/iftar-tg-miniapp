@@ -10,7 +10,7 @@ import {
   type User, 
   type Event 
 } from './lib/supabase';
-import { Plus, Moon, Clock } from 'lucide-react';
+import { Moon } from 'lucide-react';
 import './index.css';
 
 // Ramadan 2026 dates
@@ -24,7 +24,6 @@ function App() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<(Event & { invitations?: any[] }) | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [iftarTime, setIftarTime] = useState<string>('18:30');
   const { showToast, ToastContainer } = useToast();
 
   // Handle deep links
@@ -52,6 +51,25 @@ function App() {
           tg.expand();
           tg.requestFullscreen?.();
           tg.disableVerticalSwipes?.();
+          
+          // Set CSS variables for Telegram safe areas
+          const tgAny = tg as any;
+          const setSafeAreaVars = () => {
+            const safeArea = tgAny.safeAreaInset || { top: 0, bottom: 0, left: 0, right: 0 };
+            const contentSafeArea = tgAny.contentSafeAreaInset || { top: 0, bottom: 0, left: 0, right: 0 };
+            
+            document.documentElement.style.setProperty('--tg-safe-area-inset-top', `${safeArea.top}px`);
+            document.documentElement.style.setProperty('--tg-safe-area-inset-bottom', `${safeArea.bottom}px`);
+            document.documentElement.style.setProperty('--tg-content-safe-area-inset-top', `${contentSafeArea.top}px`);
+            document.documentElement.style.setProperty('--tg-content-safe-area-inset-bottom', `${contentSafeArea.bottom}px`);
+          };
+          
+          setSafeAreaVars();
+          
+          // Listen for viewport changes
+          tgAny.onEvent?.('viewportChanged', setSafeAreaVars);
+          tgAny.onEvent?.('safeAreaChanged', setSafeAreaVars);
+          tgAny.onEvent?.('contentSafeAreaChanged', setSafeAreaVars);
 
           const initData = tg.initDataUnsafe;
           if (initData?.user) {
@@ -161,21 +179,6 @@ function App() {
     showToast(messages[status] || 'Ответ записан', 'success');
   };
 
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        () => {
-          const month = new Date().getMonth();
-          const baseTime = month >= 2 && month <= 4 ? 19 : 18;
-          setIftarTime(`${baseTime}:30`);
-        },
-        () => {
-          setIftarTime('18:30');
-        }
-      );
-    }
-  }, []);
-
   if (isLoading) {
     return (
       <div className="bg-dark" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -188,24 +191,23 @@ function App() {
   }
 
   return (
-    <div className="bg-dark" style={{ minHeight: '100vh' }}>
-      {/* Header */}
-      <header className="header">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Moon size={24} className="text-gold" />
-            <h1 style={{ fontSize: '18px', fontWeight: 600, margin: 0 }}>Рамадан 2026</h1>
-          </div>
-          <div className="text-muted" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px' }}>
-            <Clock size={16} />
-            <span>Ифтар: {iftarTime}</span>
-          </div>
+    <div className="bg-dark" style={{ minHeight: '100dvh' }}>
+      {/* Compact header */}
+      <header style={{ 
+        padding: '12px 16px', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        borderBottom: '1px solid var(--color-border)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Moon size={20} className="text-gold" />
+          <span style={{ fontSize: '16px', fontWeight: 600 }}>Рамадан 2026</span>
         </div>
-        
         {user && (
-          <div className="text-muted" style={{ marginTop: '8px', fontSize: '14px' }}>
-            Салам, {user.first_name || user.username}! 👋
-          </div>
+          <span className="text-muted" style={{ fontSize: '14px' }}>
+            {user.first_name || user.username}
+          </span>
         )}
       </header>
 
@@ -274,17 +276,6 @@ function App() {
           </div>
         )}
       </main>
-
-      {/* FAB */}
-      <button
-        onClick={() => {
-          setSelectedDate(RAMADAN_2026_START);
-          setIsCreateModalOpen(true);
-        }}
-        className="fab safe-area-bottom"
-      >
-        <Plus size={24} />
-      </button>
 
       {/* Modals */}
       {isCreateModalOpen && selectedDate && user && (

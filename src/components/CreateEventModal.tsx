@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { X, MapPin, Clock, FileText, Users, AlertTriangle, Check, Loader } from 'lucide-react';
+import { X, MapPin, Clock, ChevronDown, ChevronUp, AlertTriangle, Check, Loader } from 'lucide-react';
 import { checkCollisions, createEvent, createInvitationsByUsername, type User } from '../lib/supabase';
 
 interface CreateEventModalProps {
@@ -36,19 +36,18 @@ export function CreateEventModal({
   const [guests, setGuests] = useState<GuestEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingCollisions, setIsCheckingCollisions] = useState(false);
+  const [showAdditional, setShowAdditional] = useState(false);
 
   const addGuest = () => {
     if (!guestInput.trim()) return;
     
     const username = guestInput.trim().replace('@', '').toLowerCase();
     
-    // Check if already added
     if (guests.find(g => g.username === username)) {
       setGuestInput('');
       return;
     }
 
-    // Don't add self
     if (username === currentUser.username?.toLowerCase()) {
       setGuestInput('');
       return;
@@ -58,7 +57,6 @@ export function CreateEventModal({
     setGuestInput('');
   };
 
-  // Check collisions when guests change
   useEffect(() => {
     const checkGuestCollisions = async () => {
       const usernames = guests.filter(g => !g.collision).map(g => g.username);
@@ -97,10 +95,11 @@ export function CreateEventModal({
   };
 
   const handleSubmit = async () => {
+    if (!location.trim()) return;
+    
     setIsLoading(true);
     
     try {
-      // Create event
       const event = await createEvent(
         currentUser.id,
         format(selectedDate, 'yyyy-MM-dd'),
@@ -110,7 +109,6 @@ export function CreateEventModal({
         notes || undefined
       );
 
-      // Create invitations for selected guests
       const selectedUsernames = guests.filter(g => g.selected).map(g => g.username);
       if (selectedUsernames.length > 0) {
         await createInvitationsByUsername(event.id, selectedUsernames);
@@ -131,188 +129,209 @@ export function CreateEventModal({
   const selectedCount = guests.filter(g => g.selected).length;
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content safe-area-bottom">
-        {/* Header */}
-        <div className="header" style={{ borderRadius: '24px 24px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ fontSize: '18px', fontWeight: 600, margin: 0 }}>Новый ифтар</h2>
-          <button onClick={onClose} className="btn btn-ghost" style={{ padding: '8px' }}>
+    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-content">
+        {/* Compact header */}
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between',
+          padding: '12px 16px',
+          borderBottom: '1px solid var(--color-border)'
+        }}>
+          <span style={{ fontSize: '16px', fontWeight: 600 }}>
+            {format(selectedDate, 'd MMMM', { locale: ru })}
+          </span>
+          <button onClick={onClose} className="btn btn-ghost" style={{ padding: '4px' }}>
             <X size={20} />
           </button>
         </div>
 
-        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Date display */}
-          <div style={{ 
-            backgroundColor: 'rgba(22, 101, 52, 0.2)', 
-            borderRadius: '16px', 
-            padding: '20px', 
-            textAlign: 'center' 
-          }}>
-            <div className="text-gold" style={{ fontSize: '14px' }}>Дата ифтара</div>
-            <div style={{ fontSize: '20px', fontWeight: 600, marginTop: '4px' }}>
-              {format(selectedDate, 'd MMMM yyyy', { locale: ru })}
-            </div>
-          </div>
-
-          {/* Time */}
-          <div>
-            <label className="text-muted" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', marginBottom: '8px' }}>
-              <Clock size={16} />
-              Время ифтара
-            </label>
+        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* Essential: Time */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Clock size={20} className="text-muted" />
             <input
               type="time"
               value={iftarTime}
               onChange={e => setIftarTime(e.target.value)}
               className="input"
+              style={{ flex: 1 }}
             />
           </div>
 
-          {/* Location */}
-          <div>
-            <label className="text-muted" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', marginBottom: '8px' }}>
-              <MapPin size={16} />
-              Место
-            </label>
+          {/* Essential: Location */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <MapPin size={20} className="text-muted" />
             <input
               type="text"
               value={location}
               onChange={e => setLocation(e.target.value)}
-              placeholder="Мой дом"
+              placeholder="Место (обязательно)"
               className="input"
+              style={{ flex: 1 }}
             />
           </div>
 
-          {/* Address */}
-          <input
-            type="text"
-            value={address}
-            onChange={e => setAddress(e.target.value)}
-            placeholder="Адрес (опционально)"
-            className="input"
-          />
+          {/* Collapsible additional options */}
+          <button
+            onClick={() => setShowAdditional(!showAdditional)}
+            className="btn btn-ghost"
+            style={{ 
+              justifyContent: 'space-between', 
+              padding: '12px',
+              backgroundColor: 'var(--color-border)',
+              borderRadius: '12px'
+            }}
+          >
+            <span className="text-muted" style={{ fontSize: '14px' }}>
+              Дополнительно {selectedCount > 0 && `• ${selectedCount} гостей`}
+            </span>
+            {showAdditional ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </button>
 
-          {/* Notes */}
-          <div>
-            <label className="text-muted" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', marginBottom: '8px' }}>
-              <FileText size={16} />
-              Заметки
-            </label>
-            <textarea
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              placeholder="Плов будет! 🍚"
-              rows={2}
-              className="input"
-              style={{ resize: 'none' }}
-            />
-          </div>
-
-          {/* Guests */}
-          <div>
-            <label className="text-muted" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', marginBottom: '8px' }}>
-              <Users size={16} />
-              Гости {selectedCount > 0 && `(${selectedCount})`}
-              {isCheckingCollisions && <Loader size={14} className="animate-spin" />}
-            </label>
-            
-            <div style={{ display: 'flex', gap: '8px' }}>
+          {showAdditional && (
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: '12px',
+              padding: '12px',
+              backgroundColor: 'var(--color-border)',
+              borderRadius: '12px',
+              marginTop: '-8px'
+            }}>
+              {/* Address */}
               <input
                 type="text"
-                value={guestInput}
-                onChange={e => setGuestInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addGuest())}
-                placeholder="@username"
+                value={address}
+                onChange={e => setAddress(e.target.value)}
+                placeholder="Адрес"
                 className="input"
-                style={{ flex: 1 }}
               />
-              <button onClick={addGuest} className="btn btn-primary">
-                +
-              </button>
-            </div>
 
-            {/* Guest list */}
-            {guests.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
-                {guests.map(guest => (
-                  <div
-                    key={guest.username}
-                    className={`guest-item ${guest.collision ? 'collision' : ''} ${!guest.selected ? 'unselected' : ''}`}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <button
-                        onClick={() => toggleGuest(guest.username)}
+              {/* Notes */}
+              <textarea
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                placeholder="Заметки (например: плов будет!)"
+                rows={2}
+                className="input"
+                style={{ resize: 'none' }}
+              />
+
+              {/* Guests */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <span className="text-muted" style={{ fontSize: '14px' }}>
+                    Гости {isCheckingCollisions && <Loader size={12} className="animate-spin" style={{ display: 'inline' }} />}
+                  </span>
+                </div>
+                
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    value={guestInput}
+                    onChange={e => setGuestInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addGuest())}
+                    placeholder="@username"
+                    className="input"
+                    style={{ flex: 1 }}
+                  />
+                  <button onClick={addGuest} className="btn btn-primary" style={{ padding: '10px 16px' }}>
+                    +
+                  </button>
+                </div>
+
+                {/* Guest list */}
+                {guests.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
+                    {guests.map(guest => (
+                      <div
+                        key={guest.username}
                         style={{
-                          width: '20px',
-                          height: '20px',
-                          borderRadius: '4px',
-                          border: `2px solid ${guest.selected ? 'var(--color-primary)' : 'var(--color-text-muted)'}`,
-                          backgroundColor: guest.selected ? 'var(--color-primary)' : 'transparent',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: 'pointer',
+                          justifyContent: 'space-between',
+                          padding: '8px 12px',
+                          backgroundColor: guest.collision ? 'rgba(234, 179, 8, 0.1)' : 'var(--color-card)',
+                          borderRadius: '8px',
+                          opacity: guest.selected ? 1 : 0.5
                         }}
                       >
-                        {guest.selected && <Check size={12} color="white" />}
-                      </button>
-                      
-                      <div>
-                        <div style={{ fontWeight: 500 }}>@{guest.username}</div>
-                        {guest.collision && (
-                          <div style={{ fontSize: '12px', color: '#eab308', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                            <AlertTriangle size={12} />
-                            Идёт к @{guest.collision.host_username}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <button
+                            onClick={() => toggleGuest(guest.username)}
+                            style={{
+                              width: '18px',
+                              height: '18px',
+                              borderRadius: '4px',
+                              border: `2px solid ${guest.selected ? 'var(--color-primary)' : 'var(--color-text-muted)'}`,
+                              backgroundColor: guest.selected ? 'var(--color-primary)' : 'transparent',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {guest.selected && <Check size={10} color="white" />}
+                          </button>
+                          
+                          <div>
+                            <span style={{ fontSize: '14px' }}>@{guest.username}</span>
+                            {guest.collision && (
+                              <div style={{ fontSize: '11px', color: '#eab308', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <AlertTriangle size={10} />
+                                у @{guest.collision.host_username}
+                              </div>
+                            )}
                           </div>
-                        )}
+                        </div>
+                        
+                        <button
+                          onClick={() => removeGuest(guest.username)}
+                          className="btn btn-ghost"
+                          style={{ padding: '2px' }}
+                        >
+                          <X size={14} className="text-muted" />
+                        </button>
                       </div>
-                    </div>
-                    
-                    <button
-                      onClick={() => removeGuest(guest.username)}
-                      className="btn btn-ghost"
-                      style={{ padding: '4px' }}
-                    >
-                      <X size={16} className="text-muted" />
-                    </button>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
-            )}
-
-            <p className="text-muted" style={{ fontSize: '12px', marginTop: '8px' }}>
-              Добавь гостей по их Telegram username. После создания события поделись ссылкой.
-            </p>
-          </div>
+            </div>
+          )}
 
           {/* Collision warning */}
           {hasCollisions && (
             <div style={{ 
               backgroundColor: 'rgba(234, 179, 8, 0.1)', 
-              border: '1px solid rgba(234, 179, 8, 0.3)', 
-              borderRadius: '12px', 
-              padding: '12px',
+              borderRadius: '8px', 
+              padding: '10px',
               display: 'flex',
-              alignItems: 'flex-start',
-              gap: '12px'
+              alignItems: 'center',
+              gap: '10px',
+              fontSize: '13px',
+              color: '#eab308'
             }}>
-              <AlertTriangle size={20} color="#eab308" style={{ flexShrink: 0, marginTop: '2px' }} />
-              <div style={{ fontSize: '14px', color: '#eab308' }}>
-                Некоторые гости уже приглашены на эту дату. 
-                Можешь убрать их из списка или пригласить всё равно.
-              </div>
+              <AlertTriangle size={16} />
+              Некоторые гости уже заняты
             </div>
           )}
 
           {/* Submit button */}
           <button
             onClick={handleSubmit}
-            disabled={isLoading}
+            disabled={isLoading || !location.trim()}
             className="btn btn-primary"
-            style={{ width: '100%', padding: '16px', fontSize: '16px' }}
+            style={{ 
+              width: '100%', 
+              padding: '14px', 
+              fontSize: '16px',
+              marginTop: '4px'
+            }}
           >
-            {isLoading ? 'Создаю...' : 'Создать ифтар 🌙'}
+            {isLoading ? 'Создаю...' : 'Создать 🌙'}
           </button>
         </div>
       </div>
