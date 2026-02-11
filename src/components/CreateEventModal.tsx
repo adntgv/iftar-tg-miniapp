@@ -132,9 +132,9 @@ export function CreateEventModal({
   const shareEvent = () => {
     if (!createdEventId) return;
     
-    const botUsername = import.meta.env.VITE_BOT_USERNAME || 'iftar_coordinator_bot';
-    const shareUrl = `https://t.me/${botUsername}?start=event_${createdEventId}`;
-    const shareText = `🌙 Приглашение на ифтар\n📅 ${format(selectedDate, 'd MMMM', { locale: ru })} (${getRamadanDay(selectedDate)} Рамадан)\n⏰ ${iftarTime}\n📍 ${location}`;
+    // Use invite page with beautiful OG preview
+    const shareUrl = `https://iftar.adntgv.com/invite/${createdEventId}`;
+    const shareText = `🌙 Приглашение на ифтар\n📅 ${format(selectedDate, 'd MMMM', { locale: ru })} (${getRamadanDay(selectedDate)} Рамадан)`;
     
     if (window.Telegram?.WebApp) {
       window.Telegram.WebApp.openTelegramLink(

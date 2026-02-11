@@ -62,10 +62,10 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
   };
 
   const shareEvent = () => {
-    const botUsername = import.meta.env.VITE_BOT_USERNAME || 'iftar_coordinator_bot';
-    const shareUrl = `https://t.me/${botUsername}?start=event_${event.id}`;
+    // Use invite page with beautiful OG preview
+    const shareUrl = `https://iftar.adntgv.com/invite/${event.id}`;
     const ramadanDay = getRamadanDay(new Date(event.date));
-    const shareText = `🌙 Приглашение на ифтар\n📅 ${format(new Date(event.date), 'd MMMM', { locale: ru })} (${ramadanDay} Рамадан)\n📍 ${event.location || 'Уточняется'}`;
+    const shareText = `🌙 Приглашение на ифтар\n📅 ${format(new Date(event.date), 'd MMMM', { locale: ru })} (${ramadanDay} Рамадан)`;
     
     if (window.Telegram?.WebApp) {
       window.Telegram.WebApp.openTelegramLink(

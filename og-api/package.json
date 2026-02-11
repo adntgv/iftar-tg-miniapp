@@ -1,0 +1,13 @@
+{
+  "name": "iftar-og-api",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "@supabase/supabase-js": "^2.39.0",
+    "satori": "^0.10.0",
+    "@resvg/resvg-js": "^2.6.0"
+  }
+}
