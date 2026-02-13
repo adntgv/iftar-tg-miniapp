@@ -3,7 +3,7 @@ import { ru } from 'date-fns/locale';
 import { X, MapPin, Clock, User, Check, X as XIcon, HelpCircle, Share2, Trash2, Calendar } from 'lucide-react';
 import type { Event, Invitation, User as UserType } from '../lib/supabase';
 import { respondToInvitation, deleteEvent, removeInvitation } from '../lib/supabase';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getRamadanDay, getIftarTime } from '../lib/iftarTimes';
 
 interface EventDetailsProps {
@@ -23,6 +23,12 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
   const myInvitation = event.invitations?.find(
     inv => inv.guest_id === currentUser.id
   );
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    document.body.classList.add('modal-open');
+    return () => document.body.classList.remove('modal-open');
+  }, []);
 
   const handleResponse = async (status: 'accepted' | 'declined' | 'maybe') => {
     if (!myInvitation) return;
@@ -62,15 +68,14 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
   };
 
   const shareEvent = () => {
-    // Use invite page with beautiful OG preview
-    const shareUrl = `https://iftar.adntgv.com/invite/${event.id}`;
-    const ramadanDay = getRamadanDay(new Date(event.date));
-    const shareText = `🌙 Приглашение на ифтар\n📅 ${format(new Date(event.date), 'd MMMM', { locale: ru })} (${ramadanDay} Рамадан)`;
+    const inviteUrl = `https://iftar.adntgv.com/invite/${event.id}`;
+    const tg = window.Telegram?.WebApp;
     
-    if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.openTelegramLink(
-        `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`
-      );
+    if (tg?.openTelegramLink) {
+      tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}`);
+    } else {
+      // Fallback for non-Telegram
+      window.open(`https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}`, '_blank');
     }
   };
 
@@ -105,7 +110,8 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
     window.open(url, '_blank');
   };
 
-  const acceptedCount = event.invitations?.filter(i => i.status === 'accepted').length || 0;
+  const acceptedInvitations = event.invitations?.filter(i => i.status === 'accepted') || [];
+  const totalAcceptedGuests = acceptedInvitations.reduce((sum, i) => sum + (i.guest_count || 1), 0);
   const pendingCount = event.invitations?.filter(i => i.status === 'pending').length || 0;
   const maybeCount = event.invitations?.filter(i => i.status === 'maybe').length || 0;
 
@@ -196,63 +202,74 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
           )}
 
           {/* Guest list (for host) */}
-          {isHost && event.invitations && event.invitations.length > 0 && (
+          {isHost && (
             <div>
               <div className="text-muted" style={{ fontSize: '14px', display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
                 <span>Гости</span>
                 <span>
-                  {acceptedCount > 0 && `${acceptedCount} придут`}
+                  {totalAcceptedGuests > 0 ? `👥 ${totalAcceptedGuests} чел.` : '👥 0'}
                   {pendingCount > 0 && ` • ${pendingCount} ожидают`}
                   {maybeCount > 0 && ` • ${maybeCount} может`}
                 </span>
               </div>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {event.invitations.map(invitation => (
-                  <div 
-                    key={invitation.id}
-                    style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'space-between', 
-                      padding: '12px', 
-                      backgroundColor: 'var(--color-border)', 
-                      borderRadius: '12px' 
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ 
-                        width: '32px', 
-                        height: '32px', 
-                        borderRadius: '50%', 
-                        backgroundColor: 'var(--color-card)', 
+              {event.invitations && event.invitations.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {event.invitations.map(invitation => (
+                    <div 
+                      key={invitation.id}
+                      style={{ 
                         display: 'flex', 
                         alignItems: 'center', 
-                        justifyContent: 'center', 
-                        fontSize: '14px',
-                        fontWeight: 600
-                      }}>
-                        {(invitation.guest?.first_name?.[0] || invitation.guest?.username?.[0] || '?').toUpperCase()}
+                        justifyContent: 'space-between', 
+                        padding: '12px', 
+                        backgroundColor: 'var(--color-border)', 
+                        borderRadius: '12px' 
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ 
+                          width: '32px', 
+                          height: '32px', 
+                          borderRadius: '50%', 
+                          backgroundColor: 'var(--color-card)', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center', 
+                          fontSize: '14px',
+                          fontWeight: 600
+                        }}>
+                          {(invitation.guest?.first_name?.[0] || invitation.guest?.username?.[0] || '?').toUpperCase()}
+                        </div>
+                        <span>
+                          {invitation.guest?.first_name || invitation.guest?.username || 'Гость'}
+                        </span>
                       </div>
-                      <span>
-                        {invitation.guest?.first_name || invitation.guest?.username || 'Гость'}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {invitation.status === 'accepted' && invitation.guest_count > 1 && (
+                          <span className="badge badge-primary" style={{ fontSize: '11px' }}>
+                            +{invitation.guest_count - 1}
+                          </span>
+                        )}
+                        <span className={`badge ${statusColors[invitation.status] || 'badge-gold'}`}>
+                          {statusLabels[invitation.status] || invitation.status}
+                        </span>
+                        <button
+                          onClick={() => handleRemoveGuest(invitation.id)}
+                          className="btn btn-ghost"
+                          style={{ padding: '4px' }}
+                        >
+                          <X size={14} className="text-muted" />
+                        </button>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span className={`badge ${statusColors[invitation.status] || 'badge-gold'}`}>
-                        {statusLabels[invitation.status] || invitation.status}
-                      </span>
-                      <button
-                        onClick={() => handleRemoveGuest(invitation.id)}
-                        className="btn btn-ghost"
-                        style={{ padding: '4px' }}
-                      >
-                        <X size={14} className="text-muted" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-muted" style={{ fontSize: '13px', textAlign: 'center', padding: '12px 0' }}>
+                  Пока никто не ответил
+                </div>
+              )}
             </div>
           )}
 
@@ -274,7 +291,11 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
                     backgroundColor: myInvitation.status === 'accepted' ? 'var(--color-primary)' : 'var(--color-border)'
                   }}
                 >
-                  <Check size={20} />
+                  {isResponding && myInvitation.status !== 'accepted' ? (
+                    <span className="animate-spin" style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%' }} />
+                  ) : (
+                    <Check size={20} />
+                  )}
                   <span style={{ fontSize: '14px' }}>Приду</span>
                 </button>
                 
@@ -288,7 +309,11 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
                     backgroundColor: myInvitation.status === 'maybe' ? '#6366f1' : 'var(--color-border)'
                   }}
                 >
-                  <HelpCircle size={20} />
+                  {isResponding && myInvitation.status !== 'maybe' ? (
+                    <span className="animate-spin" style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%' }} />
+                  ) : (
+                    <HelpCircle size={20} />
+                  )}
                   <span style={{ fontSize: '14px' }}>Может</span>
                 </button>
                 
@@ -302,7 +327,11 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
                     backgroundColor: myInvitation.status === 'declined' ? '#dc2626' : 'var(--color-border)'
                   }}
                 >
-                  <XIcon size={20} />
+                  {isResponding && myInvitation.status !== 'declined' ? (
+                    <span className="animate-spin" style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%' }} />
+                  ) : (
+                    <XIcon size={20} />
+                  )}
                   <span style={{ fontSize: '14px' }}>Не смогу</span>
                 </button>
               </div>

@@ -35,6 +35,7 @@ export interface Invitation {
   guest_id: string | null;
   guest_username: string | null; // For pending invites without user
   status: 'pending' | 'accepted' | 'declined' | 'maybe';
+  guest_count: number; // Number of people (1 = just the person, 2+ = with others)
   responded_at: string | null;
   created_at: string;
   event?: Event;
@@ -242,6 +243,20 @@ export async function createInvitations(
   return data;
 }
 
+export async function ensureInvitation(eventId: string, guestId: string): Promise<void> {
+  const { error } = await supabase
+    .from('invitations')
+    .upsert({
+      event_id: eventId,
+      guest_id: guestId,
+      status: 'pending',
+      guest_count: 1,
+      responded_at: null,
+    }, { onConflict: 'event_id,guest_id' });
+
+  if (error) throw error;
+}
+
 export async function respondToInvitation(
   invitationId: string,
   status: 'accepted' | 'declined' | 'maybe'
@@ -271,7 +286,7 @@ export async function getEventDetails(eventId: string): Promise<(Event & { invit
 
   const { data: invitations } = await supabase
     .from('invitations')
-    .select('*, guest:users(*)')
+    .select('id, event_id, guest_id, guest_username, status, guest_count, responded_at, created_at, guest:users(*)')
     .eq('event_id', eventId);
 
   return { ...event, invitations: invitations || [] };

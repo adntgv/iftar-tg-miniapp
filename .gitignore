@@ -25,3 +25,11 @@ dist-ssr
 
 # Worktrees
 .worktrees/
+
+# Env
+.env
+bot/.env
+
+# Test artifacts
+playwright-report/
+test-results/

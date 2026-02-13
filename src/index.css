@@ -26,9 +26,20 @@
   box-sizing: border-box;
 }
 
+/* Hide scrollbar but keep functionality */
+::-webkit-scrollbar {
+  display: none;
+}
+
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 html {
   height: 100%;
   height: -webkit-fill-available;
+  overflow: hidden;
 }
 
 body {
@@ -37,15 +48,37 @@ body {
   color: var(--color-text);
   margin: 0;
   padding: 0;
-  min-height: 100%;
-  min-height: 100vh;
-  min-height: 100dvh;
-  min-height: -webkit-fill-available;
+  height: 100%;
+  height: 100vh;
+  height: 100dvh;
+  height: -webkit-fill-available;
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
-  /* Telegram miniapp safe areas */
-  padding-top: var(--tg-content-safe-area-inset-top, 0px);
+  overflow: hidden; /* prevent page scroll */
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* App layout to control scrolling */
+.app-root {
+  height: 100vh;
+  height: 100dvh;
+  height: -webkit-fill-available;
+  overflow: hidden;
+  padding-top: calc(var(--tg-content-safe-area-inset-top, 0px) + 24px);
   padding-bottom: var(--tg-content-safe-area-inset-bottom, 0px);
+}
+
+.app-content {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Lock body scroll when modal is open */
+body.modal-open {
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+  touch-action: none;
 }
 
 /* Utility classes */
@@ -192,8 +225,16 @@ body {
   background-color: var(--color-primary-dark);
 }
 
+.btn-primary:active {
+  background-color: var(--color-primary-dark);
+}
+
 .btn-secondary {
   background-color: var(--color-border);
+}
+
+.btn-secondary:active {
+  background-color: var(--color-card);
 }
 
 .btn-secondary:hover {
@@ -208,9 +249,25 @@ body {
   background-color: var(--color-border);
 }
 
+.btn-ghost:active {
+  background-color: var(--color-border);
+  opacity: 0.9;
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Button feedback */
+.btn:active {
+  transform: scale(0.98);
+  filter: brightness(1.05);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
 }
 
 /* Input styles */
@@ -250,20 +307,23 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: flex-end;
   z-index: 50;
   animation: fadeIn 0.15s ease-out;
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 
 .modal-content {
   background-color: var(--color-card);
   width: 100%;
-  border-radius: 16px 16px 0 0;
-  max-height: 85vh;
-  max-height: 85dvh;
+  border-radius: 20px 20px 0 0;
+  max-height: 90vh;
+  max-height: 90dvh;
   overflow-y: auto;
+  overscroll-behavior: contain;
   animation: slideUp 0.25s ease-out;
   padding-bottom: env(safe-area-inset-bottom, 16px);
 }
@@ -386,6 +446,19 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* Fullscreen loader */
+.fullscreen-loader {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 20, 25, 0.7);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
 
 @keyframes fadeInScale {
   0% { 

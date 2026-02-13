@@ -7,6 +7,7 @@ import {
   getOrCreateUser, 
   getUserEvents, 
   getEventDetails,
+  ensureInvitation,
   type User, 
   type Event 
 } from './lib/supabase';
@@ -20,11 +21,15 @@ function App() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<(Event & { invitations?: any[] }) | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { showToast, ToastContainer } = useToast();
+  const [isBusy, setIsBusy] = useState(false);
+  const { showToast, showError, ToastContainer } = useToast();
 
   // Handle deep links
-  const handleDeepLink = useCallback(async (eventId: string) => {
+  const handleDeepLink = useCallback(async (eventId: string, guestId?: string) => {
     try {
+      if (guestId) {
+        await ensureInvitation(eventId, guestId);
+      }
       const details = await getEventDetails(eventId);
       if (details) {
         setSelectedEvent(details);
@@ -42,11 +47,11 @@ function App() {
       try {
         const tg = window.Telegram?.WebApp;
         
+        let currentUser: User | null = null;
+
         if (tg) {
           tg.ready();
           tg.expand();
-          tg.requestFullscreen?.();
-          tg.disableVerticalSwipes?.();
           
           // Set CSS variables for Telegram safe areas
           const tgAny = tg as any;
@@ -68,7 +73,12 @@ function App() {
           tgAny.onEvent?.('contentSafeAreaChanged', setSafeAreaVars);
 
           const initData = tg.initDataUnsafe;
+
           if (initData?.user) {
+            // Telegram environment
+            try { tg.requestFullscreen?.(); } catch (e) { /* ignore */ }
+            try { tg.disableVerticalSwipes?.(); } catch (e) { /* ignore */ }
+
             const telegramUser = initData.user;
             const dbUser = await getOrCreateUser({
               id: telegramUser.id,
@@ -77,52 +87,106 @@ function App() {
               last_name: telegramUser.last_name,
               photo_url: telegramUser.photo_url,
             });
+            currentUser = dbUser;
             setUser(dbUser);
+          } else {
+            // Web (non-telegram)
+            try {
+              const mockUser = await getOrCreateUser({
+                id: 123456789,
+                username: 'dev_user',
+                first_name: 'Developer',
+              });
+              currentUser = mockUser;
+              setUser(mockUser);
+            } catch (e) {
+              const fallbackUser = {
+                id: 'local-test-user',
+                telegram_id: 123456789,
+                username: 'dev_user',
+                first_name: 'Developer',
+                last_name: null,
+                avatar_url: null,
+                created_at: new Date().toISOString(),
+              } as User;
+              currentUser = fallbackUser;
+              setUser(fallbackUser);
+            }
           }
 
           // Handle Telegram start_param deep link
           const startParam = initData?.start_param;
           if (startParam?.startsWith('event_')) {
             const eventId = startParam.replace('event_', '');
-            await handleDeepLink(eventId);
+            await handleDeepLink(eventId, currentUser?.id);
           }
         } else {
           // Development mode
-          const mockUser = await getOrCreateUser({
-            id: 123456789,
-            username: 'dev_user',
-            first_name: 'Developer',
-          });
-          setUser(mockUser);
+          try {
+            const mockUser = await getOrCreateUser({
+              id: 123456789,
+              username: 'dev_user',
+              first_name: 'Developer',
+            });
+            currentUser = mockUser;
+            setUser(mockUser);
+          } catch (e) {
+            const fallbackUser = {
+              id: 'local-test-user',
+              telegram_id: 123456789,
+              username: 'dev_user',
+              first_name: 'Developer',
+              last_name: null,
+              avatar_url: null,
+              created_at: new Date().toISOString(),
+            } as User;
+            currentUser = fallbackUser;
+            setUser(fallbackUser);
+          }
         }
 
         // Handle URL query param deep link
         const params = new URLSearchParams(window.location.search);
         const eventId = params.get('event');
         if (eventId) {
-          await handleDeepLink(eventId);
+          await handleDeepLink(eventId, currentUser?.id || user?.id);
+        }
+
+        // Handle /invite/:id path
+        const match = window.location.pathname.match(/^\/invite\/(.+)$/);
+        if (match?.[1]) {
+          await handleDeepLink(match[1], currentUser?.id || user?.id);
+        }
+
+        if (params.get('create') === '1') {
+          setSelectedDate(new Date('2026-02-17'));
+          setIsCreateModalOpen(true);
         }
       } catch (error) {
         console.error('Failed to initialize:', error);
-        showToast('Ошибка инициализации', 'error');
+        showError('Ошибка инициализации');
       } finally {
         setIsLoading(false);
       }
     };
 
     initTelegram();
-  }, [handleDeepLink, showToast]);
+  }, [handleDeepLink, showError]);
 
   const loadEvents = useCallback(async () => {
     if (!user) return;
     
     try {
+      setIsBusy(true);
       const userEvents = await getUserEvents(user.id);
       setEvents(userEvents);
     } catch (error) {
       console.error('Failed to load events:', error);
+      showError('Ошибка загрузки событий');
+    } finally {
+      setIsBusy(false);
     }
-  }, [user]);
+  }, [user, showError]);
 
   useEffect(() => {
     loadEvents();
@@ -137,13 +201,16 @@ function App() {
     
     if (eventOnDate) {
       try {
+        setIsBusy(true);
         const details = await getEventDetails(eventOnDate.id);
         if (details) {
           setSelectedEvent(details);
         }
       } catch (error) {
         console.error('Failed to load event details:', error);
-        showToast('Ошибка загрузки события', 'error');
+        showError('Ошибка загрузки события');
+      } finally {
+        setIsBusy(false);
       }
     } else {
       setIsCreateModalOpen(true);
@@ -152,8 +219,8 @@ function App() {
 
   const handleEventCreated = () => {
     loadEvents();
-    setSelectedDate(null);
-    showToast('Ифтар создан! 🌙', 'success');
+    // Don't close modal yet - let success screen show first
+    // Modal will close itself when user taps "Close" or "Share"
   };
 
   const handleEventUpdated = () => {
@@ -203,12 +270,10 @@ function App() {
   }
 
   return (
-    <div className="bg-dark" style={{ minHeight: '100dvh' }}>
-      {/* Spacer for Telegram header buttons */}
-      <div style={{ height: 'calc(var(--tg-content-safe-area-inset-top, 0px) + var(--tg-safe-area-inset-top, 0px))' }} />
-
-      {/* Main content */}
-      <main style={{ padding: '12px' }}>
+    <div className="bg-dark app-root">
+      <div className="app-content">
+        {/* Main content */}
+        <main style={{ padding: '12px' }}>
         <Calendar
           events={events}
           onDateSelect={handleDateSelect}
@@ -296,8 +361,18 @@ function App() {
         />
       )}
 
-      {/* Toast notifications */}
-      <ToastContainer />
+          {/* Toast notifications */}
+        <ToastContainer />
+
+        {isBusy && (
+          <div className="fullscreen-loader">
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+              <div className="animate-spin" style={{ width: 28, height: 28, border: '3px solid rgba(255,255,255,0.2)', borderTopColor: '#fff', borderRadius: '50%' }} />
+              <div className="text-muted" style={{ fontSize: '13px' }}>Загружаю...</div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

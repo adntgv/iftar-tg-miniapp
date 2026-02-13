@@ -33,6 +33,14 @@ export function CreateEventModal({
     setIftarTime(getIftarTime(selectedDate));
   }, [selectedDate]);
 
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.classList.add('modal-open');
+      return () => document.body.classList.remove('modal-open');
+    }
+  }, [isOpen]);
+
   const handleSubmit = async () => {
     if (!location.trim()) return;
     
@@ -59,14 +67,13 @@ export function CreateEventModal({
   const shareEvent = () => {
     if (!createdEventId) return;
     
-    // Use invite page with beautiful OG preview
-    const shareUrl = `https://iftar.adntgv.com/invite/${createdEventId}`;
-    const shareText = `🌙 Приглашение на ифтар\n📅 ${format(selectedDate, 'd MMMM', { locale: ru })} (${getRamadanDay(selectedDate)} Рамадан)`;
+    const inviteUrl = `https://iftar.adntgv.com/invite/${createdEventId}`;
+    const tg = window.Telegram?.WebApp;
     
-    if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.openTelegramLink(
-        `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`
-      );
+    if (tg?.openTelegramLink) {
+      tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}`);
+    } else {
+      window.open(`https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}`, '_blank');
     }
   };
 
@@ -233,7 +240,12 @@ export function CreateEventModal({
               marginTop: '4px'
             }}
           >
-            {isLoading ? 'Создаю...' : 'Создать 🌙'}
+            {isLoading ? (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span className="animate-spin" style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%' }} />
+                Создаю...
+              </span>
+            ) : 'Создать 🌙'}
           </button>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Check, X, AlertTriangle, Info } from 'lucide-react';
 
 interface ToastProps {
@@ -10,15 +10,23 @@ interface ToastProps {
 
 export function Toast({ message, type = 'info', duration = 3000, onClose }: ToastProps) {
   const [isVisible, setIsVisible] = useState(true);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const hideTimer = setTimeout(() => {
       setIsVisible(false);
-      setTimeout(onClose, 300);
     }, duration);
 
-    return () => clearTimeout(timer);
-  }, [duration, onClose]);
+    const removeTimer = setTimeout(() => {
+      onCloseRef.current();
+    }, duration + 300);
+
+    return () => {
+      clearTimeout(hideTimer);
+      clearTimeout(removeTimer);
+    };
+  }, [duration]);
 
   const icons = {
     success: <Check size={20} />,
@@ -70,16 +78,18 @@ interface ToastItem {
 export function useToast() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const showToast = (message: string, type: ToastItem['type'] = 'info') => {
+  const showToast = useCallback((message: string, type: ToastItem['type'] = 'info') => {
     const id = Math.random().toString(36).slice(2);
     setToasts(prev => [...prev, { id, message, type }]);
-  };
+  }, []);
 
-  const removeToast = (id: string) => {
+  const showError = useCallback((message: string) => showToast(message, 'error'), [showToast]);
+
+  const removeToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
-  };
+  }, []);
 
-  const ToastContainer = () => (
+  const ToastContainer = useCallback(() => (
     <>
       {toasts.map(toast => (
         <Toast
@@ -90,7 +100,7 @@ export function useToast() {
         />
       ))}
     </>
-  );
+  ), [toasts, removeToast]);
 
-  return { showToast, ToastContainer };
+  return { showToast, showError, ToastContainer };
 }

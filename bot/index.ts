@@ -1,5 +1,6 @@
 import { Bot, InlineKeyboard } from 'grammy';
 import { createClient } from '@supabase/supabase-js';
+import fetch from 'node-fetch';
 
 const bot = new Bot(process.env.BOT_TOKEN!);
 const supabase = createClient(
@@ -8,10 +9,157 @@ const supabase = createClient(
 );
 
 const MINI_APP_URL = process.env.MINI_APP_URL || 'https://iftar.adntgv.com';
+const UMAMI_URL = process.env.UMAMI_URL || 'https://umami.adntgv.com';
+const UMAMI_WEBSITE_ID = process.env.UMAMI_WEBSITE_ID || 'e2b0e90c-3cee-474d-8d8a-2fc585e66d99';
+
+async function trackEvent(name: string, data: Record<string, any> = {}) {
+  try {
+    await fetch(`${UMAMI_URL}/api/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'event',
+        payload: {
+          website: UMAMI_WEBSITE_ID,
+          name,
+          data,
+        },
+      }),
+    });
+  } catch (e) {
+    // ignore analytics errors
+  }
+}
 
 // /start command
 bot.command('start', async (ctx) => {
+  trackEvent('bot_start', { from: ctx.from?.id });
   const startParam = ctx.match;
+  
+  // Handle RSVP from web page: rsvp_{eventId}_{status}_{guestCount}
+  if (startParam?.startsWith('rsvp_')) {
+    trackEvent('bot_rsvp_from_web', { startParam });
+    const parts = startParam.split('_');
+    if (parts.length >= 4) {
+      const eventId = parts[1];
+      const status = parts[2]; // accepted, declined
+      const guestCount = parseInt(parts[3]) || 1;
+      
+      // Process the RSVP
+      const telegramId = ctx.from?.id;
+      if (telegramId) {
+        // Get or create user
+        let { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_id', telegramId)
+          .single();
+
+        if (!user) {
+          const { data: newUser } = await supabase
+            .from('users')
+            .insert({
+              telegram_id: telegramId,
+              username: ctx.from?.username,
+              first_name: ctx.from?.first_name,
+              last_name: ctx.from?.last_name,
+            })
+            .select('id')
+            .single();
+          user = newUser;
+        }
+
+        if (user) {
+          // Update or create invitation
+          const { data: existing } = await supabase
+            .from('invitations')
+            .select('id')
+            .eq('event_id', eventId)
+            .eq('guest_id', user.id)
+            .single();
+
+          if (existing) {
+            await supabase
+              .from('invitations')
+              .update({ 
+                status, 
+                guest_count: status === 'accepted' ? guestCount : 1,
+                responded_at: new Date().toISOString() 
+              })
+              .eq('id', existing.id);
+          } else {
+            await supabase
+              .from('invitations')
+              .insert({
+                event_id: eventId,
+                guest_id: user.id,
+                status,
+                guest_count: status === 'accepted' ? guestCount : 1,
+                responded_at: new Date().toISOString(),
+              });
+          }
+        }
+      }
+
+      // Fetch event for confirmation message
+      const { data: event } = await supabase
+        .from('events')
+        .select('*, host:users(*)')
+        .eq('id', eventId)
+        .single();
+
+      if (event) {
+        const hostName = event.host?.first_name || 'друга';
+        const eventDate = new Date(event.date);
+        const dateStr = eventDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+        
+        if (status === 'accepted') {
+          const guestText = guestCount === 1 ? '' : guestCount === 2 ? ' вдвоём' : ` (${guestCount} чел.)`;
+          await ctx.reply(
+            `✅ *Отлично!*\n\n` +
+            `Ты${guestText} придёшь на ифтар к ${hostName}!\n\n` +
+            `📅 ${dateStr}\n` +
+            `📍 ${event.location || 'Место уточняется'}\n\n` +
+            `_Хочешь создать своё приглашение?_`,
+            { 
+              parse_mode: 'Markdown',
+              reply_markup: new InlineKeyboard()
+                .webApp('🌙 Создать приглашение', MINI_APP_URL)
+            }
+          );
+        } else {
+          await ctx.reply(
+            `😔 *Жаль!*\n\n` +
+            `Ты не сможешь прийти на ифтар к ${hostName}.\n` +
+            `Может в другой раз!\n\n` +
+            `_Хочешь пригласить друзей к себе?_`,
+            { 
+              parse_mode: 'Markdown',
+              reply_markup: new InlineKeyboard()
+                .webApp('🌙 Создать приглашение', MINI_APP_URL)
+            }
+          );
+        }
+
+        // Notify host
+        if (event.host?.telegram_id && event.host.telegram_id !== telegramId) {
+          const guestName = ctx.from?.first_name || ctx.from?.username || 'Гость';
+          const guestCountText = guestCount > 1 ? ` (${guestCount} чел.)` : '';
+          const statusLabel = status === 'accepted' ? `придёт${guestCountText}` : 'не сможет';
+          const emoji = status === 'accepted' ? '✅' : '❌';
+          
+          await bot.api.sendMessage(
+            event.host.telegram_id,
+            `${emoji} *${guestName}* ${statusLabel}!\n\n` +
+            `📅 Ифтар ${dateStr}\n` +
+            `📍 ${event.location || 'Место не указано'}`,
+            { parse_mode: 'Markdown' }
+          );
+        }
+      }
+      return;
+    }
+  }
   
   if (startParam?.startsWith('event_')) {
     const eventId = startParam.replace('event_', '');
@@ -93,37 +241,26 @@ bot.command('start', async (ctx) => {
     const ramadanDay = Math.floor((eventDate.getTime() - ramadanStart.getTime()) / (24 * 60 * 60 * 1000)) + 1;
 
     const keyboard = new InlineKeyboard()
-      .text('✅ Приду!', `rsvp:${eventId}:accepted`)
-      .text('❌ Не смогу', `rsvp:${eventId}:declined`)
+      .text('✅ Приду (1)', `rsvp:${eventId}:accepted:1`)
+      .text('👥 +1', `rsvp:${eventId}:accepted:2`)
+      .text('👨‍👩‍👧 +2-3', `rsvp:${eventId}:accepted:3`)
       .row()
-      .text('🤔 Пока не знаю', `rsvp:${eventId}:maybe`)
+      .text('❌ Не смогу', `rsvp:${eventId}:declined:0`)
       .row()
       .webApp('📅 Открыть календарь', MINI_APP_URL);
 
-    // Beautiful invitation message
+    // Clean invitation message
     const inviteMessage = 
-      `╭─────────────────────╮\n` +
-      `│    🌙 *ПРИГЛАШЕНИЕ*    │\n` +
-      `│        *НА ИФТАР*        │\n` +
-      `╰─────────────────────╯\n\n` +
+      `🌙 *Приглашение на ифтар*\n\n` +
       
-      `✨ *${hostName}* приглашает тебя\n` +
-      `разделить ифтар вместе!\n\n` +
+      `*${hostName}* зовёт тебя разделить ифтар\n\n` +
       
-      `┌───────────────────┐\n` +
-      `│ 📅  *${ramadanDay} Рамадан*\n` +
-      `│      ${dateStr}\n` +
-      `│\n` +
-      `│ ⏰  *${time || '—'}*\n` +
-      `│\n` +
-      `│ 📍  *${location}*\n` +
-      `${address ? `│      ${address}\n` : ''}` +
-      `└───────────────────┘\n` +
+      `📅  *${ramadanDay} Рамадан* · ${dateStr}\n` +
+      `⏰  ${time || '—'}\n` +
+      `📍  ${location}${address ? ` · ${address}` : ''}\n` +
       
-      `${event.notes ? `\n💬 _"${event.notes}"_\n` : ''}` +
-      `\n` +
-      `─────────────────────\n` +
-      `      *Ты придёшь?* 👇`;
+      `${event.notes ? `\n💬 _${event.notes}_\n` : ''}` +
+      `\n*Ты придёшь?*`;
 
     await ctx.reply(inviteMessage, { 
       parse_mode: 'Markdown',
@@ -156,7 +293,9 @@ bot.on('callback_query:data', async (ctx) => {
   const data = ctx.callbackQuery.data;
   
   if (data.startsWith('rsvp:')) {
-    const [, eventId, status] = data.split(':');
+    trackEvent('bot_rsvp', { data });
+    const [, eventId, status, guestCountStr] = data.split(':');
+    const guestCount = parseInt(guestCountStr) || 1;
     const telegramId = ctx.from.id;
     
     // Get or create user
@@ -194,6 +333,7 @@ bot.on('callback_query:data', async (ctx) => {
           .from('invitations')
           .update({ 
             status, 
+            guest_count: status === 'accepted' ? guestCount : 1,
             responded_at: new Date().toISOString() 
           })
           .eq('id', existing.id);
@@ -204,13 +344,15 @@ bot.on('callback_query:data', async (ctx) => {
             event_id: eventId,
             guest_id: user.id,
             status,
+            guest_count: status === 'accepted' ? guestCount : 1,
             responded_at: new Date().toISOString(),
           });
       }
     }
 
+    const guestLabel = guestCount === 1 ? '' : guestCount === 2 ? ' вдвоём' : ` (${guestCount} человека)`;
     const statusText: Record<string, string> = {
-      accepted: '✅ Отлично! Ты отметился что придёшь.',
+      accepted: `✅ Отлично! Ты придёшь${guestLabel}.`,
       declined: '❌ Понял, ты не сможешь.',
       maybe: '🤔 Окей, пока "может быть".',
     };
@@ -238,8 +380,9 @@ bot.on('callback_query:data', async (ctx) => {
           maybe: '🤔',
         };
         
+        const guestCountText = guestCount > 1 ? ` (${guestCount} чел.)` : '';
         const statusLabel: Record<string, string> = {
-          accepted: 'придёт',
+          accepted: `придёт${guestCountText}`,
           declined: 'не сможет',
           maybe: 'пока не уверен',
         };
@@ -256,12 +399,14 @@ bot.on('callback_query:data', async (ctx) => {
       console.error('Failed to notify host:', e);
     }
 
-    // Update message to show response
+    // Update message to show response with current selection
+    const isAccepted = status === 'accepted';
     const keyboard = new InlineKeyboard()
-      .text(status === 'accepted' ? '✅ Приду ✓' : '✅ Приду', `rsvp:${eventId}:accepted`)
-      .text(status === 'declined' ? '❌ Не смогу ✓' : '❌ Не смогу', `rsvp:${eventId}:declined`)
+      .text(isAccepted && guestCount === 1 ? '✅ (1) ✓' : '✅ Приду (1)', `rsvp:${eventId}:accepted:1`)
+      .text(isAccepted && guestCount === 2 ? '👥 +1 ✓' : '👥 +1', `rsvp:${eventId}:accepted:2`)
+      .text(isAccepted && guestCount >= 3 ? '👨‍👩‍👧 +2-3 ✓' : '👨‍👩‍👧 +2-3', `rsvp:${eventId}:accepted:3`)
       .row()
-      .text(status === 'maybe' ? '🤔 Может быть ✓' : '🤔 Может быть', `rsvp:${eventId}:maybe`)
+      .text(status === 'declined' ? '❌ Не смогу ✓' : '❌ Не смогу', `rsvp:${eventId}:declined:0`)
       .row()
       .webApp('📅 Открыть календарь', MINI_APP_URL);
 
@@ -276,8 +421,16 @@ bot.on('callback_query:data', async (ctx) => {
 // Handle inline queries for sharing events
 bot.on('inline_query', async (ctx) => {
   const query = ctx.inlineQuery.query;
+  const telegramId = ctx.from.id;
   
-  if (!query) {
+  // Get user's events (as host)
+  const { data: user } = await supabase
+    .from('users')
+    .select('id')
+    .eq('telegram_id', telegramId)
+    .single();
+
+  if (!user) {
     await ctx.answerInlineQuery([]);
     return;
   }
@@ -285,23 +438,46 @@ bot.on('inline_query', async (ctx) => {
   const { data: events } = await supabase
     .from('events')
     .select('*, host:users(*)')
-    .ilike('location', `%${query}%`)
-    .limit(5);
+    .eq('host_id', user.id)
+    .gte('date', new Date().toISOString().split('T')[0])
+    .order('date', { ascending: true })
+    .limit(10);
 
-  const results = (events || []).map(event => ({
-    type: 'article' as const,
-    id: event.id,
-    title: `Ифтар ${new Date(event.date).toLocaleDateString('ru-RU')}`,
-    description: event.location || 'Место не указано',
-    input_message_content: {
-      message_text: `🌙 *Приглашение на ифтар*\n\n📅 ${new Date(event.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}\n📍 ${event.location || 'Место уточняется'}\n👤 ${event.host?.first_name || 'Хозяин'}`,
-      parse_mode: 'Markdown' as const,
-    },
-    reply_markup: new InlineKeyboard()
-      .url('Ответить', `https://t.me/iftar_coordinator_bot?start=event_${event.id}`),
-  }));
+  // Filter by query if provided
+  const filtered = query 
+    ? (events || []).filter(e => 
+        e.location?.toLowerCase().includes(query.toLowerCase()) ||
+        e.date.includes(query)
+      )
+    : events || [];
 
-  await ctx.answerInlineQuery(results);
+  const results = filtered.map(event => {
+    const eventDate = new Date(event.date);
+    const dateStr = eventDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+    const inviteUrl = `https://iftar.adntgv.com/invite/${event.id}`;
+    
+    // Calculate Ramadan day
+    const ramadanStart = new Date('2026-02-17');
+    const ramadanDay = Math.floor((eventDate.getTime() - ramadanStart.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    
+    return {
+      type: 'article' as const,
+      id: event.id,
+      title: `🌙 Ифтар ${dateStr}`,
+      description: `${ramadanDay} Рамадан • ${event.location || 'Место не указано'}`,
+      thumbnail_url: 'https://iftar.adntgv.com/moon.svg',
+      input_message_content: {
+        message_text: inviteUrl,
+        link_preview_options: {
+          show_above_text: true,
+          prefer_large_media: true,
+        },
+      },
+    };
+  });
+
+  await ctx.answerInlineQuery(results, { cache_time: 10 });
+  trackEvent('bot_inline_query', { query });
 });
 
 // Send reminders for events happening tomorrow
@@ -349,10 +525,13 @@ async function sendReminders() {
     }
 
     // Send reminder to host about who's coming
-    const acceptedCount = (event.invitations || []).filter((i: any) => i.status === 'accepted').length;
-    const acceptedNames = (event.invitations || [])
-      .filter((i: any) => i.status === 'accepted')
-      .map((i: any) => i.guest?.first_name || i.guest?.username || 'Гость')
+    const acceptedInvitations = (event.invitations || []).filter((i: any) => i.status === 'accepted');
+    const totalGuests = acceptedInvitations.reduce((sum: number, i: any) => sum + (i.guest_count || 1), 0);
+    const acceptedNames = acceptedInvitations
+      .map((i: any) => {
+        const name = i.guest?.first_name || i.guest?.username || 'Гость';
+        return i.guest_count > 1 ? `${name} (+${i.guest_count - 1})` : name;
+      })
       .join(', ');
 
     if (event.host?.telegram_id) {
@@ -363,7 +542,7 @@ async function sendReminders() {
           `Завтра твой ифтар!\n` +
           `📅 ${dateStr}\n` +
           `⏰ ${event.iftar_time || '18:00'}\n` +
-          `👥 Придут (${acceptedCount}): ${acceptedNames || 'пока никто'}`,
+          `👥 Придут (${totalGuests} чел.): ${acceptedNames || 'пока никто'}`,
           { parse_mode: 'Markdown' }
         );
         console.log(`Host reminder sent to ${event.host.telegram_id}`);
@@ -393,6 +572,7 @@ bot.command('send_reminders', async (ctx) => {
   }
   bot.start();
   console.log('Bot started in polling mode');
+  trackEvent('bot_started');
 })();
 
 // Export for external cron trigger
