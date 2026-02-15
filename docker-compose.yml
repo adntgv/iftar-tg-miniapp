@@ -16,7 +16,7 @@ services:
       context: ./api
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=${DATABASE_URL:?}
+      - DATABASE_URL=${DATABASE_URL}
     labels:
       - traefik.enable=true
       - "traefik.http.routers.iftar-api.rule=Host(`iftar-api.adntgv.com`)"
@@ -33,8 +33,8 @@ services:
       context: ./bot
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=${DATABASE_URL:?}
-      - BOT_TOKEN=${BOT_TOKEN:?}
+      - DATABASE_URL=${DATABASE_URL}
+      - BOT_TOKEN=${BOT_TOKEN}
       - MINI_APP_URL=https://iftar.adntgv.com
       - API_URL=http://api:3002
 
