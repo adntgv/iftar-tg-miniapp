@@ -3,7 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: iftar-miniapp
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.iftar-miniapp.rule=Host(`iftar.adntgv.com`)"
@@ -18,9 +17,8 @@ services:
     build:
       context: ./api
       dockerfile: Dockerfile
-    container_name: iftar-api
     environment:
-      - DATABASE_URL=postgres://iftar_user:iftar_secure_pass_2026@io4gs04gskogggg40g8s0s00:5432/iftar_db
+      - DATABASE_URL=${DATABASE_URL}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.iftar-api.rule=Host(`iftar-api.adntgv.com`)"
@@ -35,10 +33,9 @@ services:
     build:
       context: ./bot
       dockerfile: Dockerfile
-    container_name: iftar-bot
     environment:
-      - DATABASE_URL=postgres://iftar_user:iftar_secure_pass_2026@io4gs04gskogggg40g8s0s00:5432/iftar_db
-      - BOT_TOKEN=8566435220:AAGuzu09JYKhOxQgp1oEVGBFh5mcCXpBjCw
+      - DATABASE_URL=${DATABASE_URL}
+      - BOT_TOKEN=${BOT_TOKEN}
       - MINI_APP_URL=https://iftar.adntgv.com
       - API_URL=http://api:3002
     networks:
@@ -50,7 +47,6 @@ services:
     build:
       context: ./og-api
       dockerfile: Dockerfile
-    container_name: iftar-og-api
     environment:
       - API_URL=http://api:3002
       - BOT_USERNAME=iftar_coordinator_bot
