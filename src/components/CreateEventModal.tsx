@@ -259,8 +259,9 @@ export function CreateEventModal({
             style={{ 
               justifyContent: 'space-between', 
               padding: '12px',
-              backgroundColor: 'var(--color-border)',
-              borderRadius: '12px'
+              backgroundColor: 'transparent',
+              borderRadius: '12px',
+              border: '1px solid var(--color-border)',
             }}
           >
             <span className="text-muted" style={{ fontSize: '14px' }}>
