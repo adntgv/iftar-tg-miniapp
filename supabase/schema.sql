@@ -8,6 +8,7 @@ CREATE TABLE users (
   first_name TEXT,
   last_name TEXT,
   avatar_url TEXT,
+  city TEXT DEFAULT 'astana',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

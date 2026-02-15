@@ -1,5 +1,4 @@
 import express from 'express';
-import { createClient } from '@supabase/supabase-js';
 import satori from 'satori';
 import { Resvg } from '@resvg/resvg-js';
 import { readFileSync } from 'fs';
@@ -11,12 +10,7 @@ const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-);
-
+const API_URL = process.env.API_URL || 'https://iftar-api.adntgv.com';
 const BOT_USERNAME = process.env.BOT_USERNAME || 'iftar_coordinator_bot';
 const RAMADAN_START = new Date('2026-02-17');
 
@@ -45,16 +39,19 @@ function formatDate(date) {
   };
 }
 
+// Fetch event from the new API
+async function fetchEvent(eventId) {
+  const response = await fetch(`${API_URL}/api/events/${eventId}`);
+  if (!response.ok) return null;
+  return response.json();
+}
+
 // Generate OG image using satori
 app.get('/og/:eventId.png', async (req, res) => {
   try {
     const { eventId } = req.params;
     
-    const { data: event } = await supabase
-      .from('events')
-      .select('*, host:users(*)')
-      .eq('id', eventId)
-      .single();
+    const event = await fetchEvent(eventId);
 
     if (!event) {
       return res.status(404).send('Event not found');
@@ -176,11 +173,7 @@ app.get('/og/:eventId.png', async (req, res) => {
 app.get('/invite/:eventId', async (req, res) => {
   const { eventId } = req.params;
   
-  const { data: event } = await supabase
-    .from('events')
-    .select('*, host:users(*)')
-    .eq('id', eventId)
-    .single();
+  const event = await fetchEvent(eventId);
 
   if (!event) {
     return res.redirect(`https://t.me/${BOT_USERNAME}`);
@@ -686,4 +679,5 @@ app.get('/health', (req, res) => res.send('OK'));
 
 app.listen(PORT, () => {
   console.log(`OG API running on port ${PORT}`);
+  console.log(`Fetching events from: ${API_URL}`);
 });

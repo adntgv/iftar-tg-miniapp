@@ -8,10 +8,12 @@ import {
   getUserEvents, 
   getEventDetails,
   ensureInvitation,
+  updateUserCity,
   type User, 
   type Event 
 } from './lib/supabase';
-import { Moon } from 'lucide-react';
+import { Moon, Settings, ChevronDown } from 'lucide-react';
+import { CITIES, getCityById } from './lib/iftarTimes';
 import './index.css';
 
 function App() {
@@ -22,6 +24,8 @@ function App() {
   const [selectedEvent, setSelectedEvent] = useState<(Event & { invitations?: any[] }) | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
+  const [cityId, setCityId] = useState('astana');
+  const [showCityPicker, setShowCityPicker] = useState(false);
   const { showToast, showError, ToastContainer } = useToast();
 
   // Handle deep links
@@ -33,6 +37,9 @@ function App() {
       const details = await getEventDetails(eventId);
       if (details) {
         setSelectedEvent(details);
+        
+        // Track invitation view
+        window.umami?.track('invitation_viewed', { eventId, hasGuestId: !!guestId });
       } else {
         showToast('Приглашение не найдено', 'error');
       }
@@ -89,6 +96,7 @@ function App() {
             });
             currentUser = dbUser;
             setUser(dbUser);
+            if (dbUser.city) setCityId(dbUser.city);
           } else {
             // Web (non-telegram)
             try {
@@ -274,10 +282,34 @@ function App() {
       <div className="app-content">
         {/* Main content */}
         <main style={{ padding: '12px' }}>
+        {/* City selector */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+          <button
+            onClick={() => setShowCityPicker(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '6px 12px',
+              borderRadius: '8px',
+              backgroundColor: 'var(--color-card)',
+              border: '1px solid var(--color-border)',
+              color: 'var(--color-text)',
+              fontSize: '13px',
+              cursor: 'pointer',
+            }}
+          >
+            <Settings size={14} className="text-muted" />
+            <span>{getCityById(cityId)?.name || 'Астана'}</span>
+            <ChevronDown size={14} className="text-muted" />
+          </button>
+        </div>
+
         <Calendar
           events={events}
           onDateSelect={handleDateSelect}
           selectedDate={selectedDate}
+          cityId={cityId}
         />
 
         {/* Upcoming events */}
@@ -360,6 +392,74 @@ function App() {
           isHost={selectedEvent.host_id === user.id}
         />
       )}
+
+          {/* City picker modal */}
+        {showCityPicker && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.6)',
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'center',
+              zIndex: 1000,
+            }}
+            onClick={() => setShowCityPicker(false)}
+          >
+            <div
+              style={{
+                backgroundColor: 'var(--color-card)',
+                borderRadius: '16px 16px 0 0',
+                padding: '20px',
+                width: '100%',
+                maxWidth: '500px',
+                maxHeight: '70vh',
+                overflowY: 'auto',
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px', textAlign: 'center' }}>
+                Выберите город
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {CITIES.map(city => (
+                  <button
+                    key={city.id}
+                    onClick={async () => {
+                      setCityId(city.id);
+                      setShowCityPicker(false);
+                      if (user) {
+                        try {
+                          await updateUserCity(user.id, city.id);
+                          showToast(`Город: ${city.name}`, 'success');
+                        } catch {
+                          showToast('Ошибка сохранения', 'error');
+                        }
+                      }
+                    }}
+                    style={{
+                      padding: '12px 16px',
+                      borderRadius: '10px',
+                      border: 'none',
+                      backgroundColor: city.id === cityId ? 'rgba(212, 175, 55, 0.2)' : 'transparent',
+                      color: 'var(--color-text)',
+                      fontSize: '15px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span>{city.name}</span>
+                    {city.id === cityId && <span className="text-gold">✓</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
           {/* Toast notifications */}
         <ToastContainer />

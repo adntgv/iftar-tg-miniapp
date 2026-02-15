@@ -1,12 +1,51 @@
 import { Bot, InlineKeyboard } from 'grammy';
-import { createClient } from '@supabase/supabase-js';
+import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { eq, and, gte, inArray, asc } from 'drizzle-orm';
+import { pgTable, uuid, bigint, text, timestamp, date, time, integer } from 'drizzle-orm/pg-core';
 import fetch from 'node-fetch';
 
+// Schema
+const users = pgTable('users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  telegram_id: bigint('telegram_id', { mode: 'number' }).notNull().unique(),
+  username: text('username'),
+  first_name: text('first_name'),
+  last_name: text('last_name'),
+  avatar_url: text('avatar_url'),
+  created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+const events = pgTable('events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  host_id: uuid('host_id'),
+  date: date('date').notNull(),
+  iftar_time: time('iftar_time'),
+  location: text('location'),
+  address: text('address'),
+  notes: text('notes'),
+  created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+const invitations = pgTable('invitations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  event_id: uuid('event_id'),
+  guest_id: uuid('guest_id'),
+  guest_username: text('guest_username'),
+  status: text('status').default('pending'),
+  guest_count: integer('guest_count').default(1),
+  responded_at: timestamp('responded_at', { withTimezone: true }),
+  created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+// Database connection
+const DATABASE_URL = process.env.DATABASE_URL!;
+const sql = postgres(DATABASE_URL);
+const db = drizzle(sql);
+
 const bot = new Bot(process.env.BOT_TOKEN!);
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!
-);
 
 const MINI_APP_URL = process.env.MINI_APP_URL || 'https://iftar.adntgv.com';
 const UMAMI_URL = process.env.UMAMI_URL || 'https://umami.adntgv.com';
@@ -31,6 +70,22 @@ async function trackEvent(name: string, data: Record<string, any> = {}) {
   }
 }
 
+// Helper to get or create user
+async function getOrCreateUser(telegramId: number, username?: string, firstName?: string, lastName?: string) {
+  let [user] = await db.select().from(users).where(eq(users.telegram_id, telegramId)).limit(1);
+
+  if (!user) {
+    [user] = await db.insert(users).values({
+      telegram_id: telegramId,
+      username,
+      first_name: firstName,
+      last_name: lastName,
+    }).returning();
+  }
+
+  return user;
+}
+
 // /start command
 bot.command('start', async (ctx) => {
   trackEvent('bot_start', { from: ctx.from?.id });
@@ -42,74 +97,49 @@ bot.command('start', async (ctx) => {
     const parts = startParam.split('_');
     if (parts.length >= 4) {
       const eventId = parts[1];
-      const status = parts[2]; // accepted, declined
+      const status = parts[2];
       const guestCount = parseInt(parts[3]) || 1;
       
-      // Process the RSVP
       const telegramId = ctx.from?.id;
       if (telegramId) {
-        // Get or create user
-        let { data: user } = await supabase
-          .from('users')
-          .select('id')
-          .eq('telegram_id', telegramId)
-          .single();
-
-        if (!user) {
-          const { data: newUser } = await supabase
-            .from('users')
-            .insert({
-              telegram_id: telegramId,
-              username: ctx.from?.username,
-              first_name: ctx.from?.first_name,
-              last_name: ctx.from?.last_name,
-            })
-            .select('id')
-            .single();
-          user = newUser;
-        }
+        const user = await getOrCreateUser(telegramId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
 
         if (user) {
-          // Update or create invitation
-          const { data: existing } = await supabase
-            .from('invitations')
-            .select('id')
-            .eq('event_id', eventId)
-            .eq('guest_id', user.id)
-            .single();
+          // Check for existing invitation
+          const [existing] = await db.select().from(invitations)
+            .where(and(eq(invitations.event_id, eventId), eq(invitations.guest_id, user.id))).limit(1);
 
           if (existing) {
-            await supabase
-              .from('invitations')
-              .update({ 
-                status, 
-                guest_count: status === 'accepted' ? guestCount : 1,
-                responded_at: new Date().toISOString() 
-              })
-              .eq('id', existing.id);
+            await db.update(invitations).set({
+              status,
+              guest_count: status === 'accepted' ? guestCount : 1,
+              responded_at: new Date(),
+            }).where(eq(invitations.id, existing.id));
           } else {
-            await supabase
-              .from('invitations')
-              .insert({
-                event_id: eventId,
-                guest_id: user.id,
-                status,
-                guest_count: status === 'accepted' ? guestCount : 1,
-                responded_at: new Date().toISOString(),
-              });
+            await db.insert(invitations).values({
+              event_id: eventId,
+              guest_id: user.id,
+              status,
+              guest_count: status === 'accepted' ? guestCount : 1,
+              responded_at: new Date(),
+            });
           }
         }
       }
 
       // Fetch event for confirmation message
-      const { data: event } = await supabase
-        .from('events')
-        .select('*, host:users(*)')
-        .eq('id', eventId)
-        .single();
+      const [eventResult] = await db.select({
+        event: events,
+        host: users,
+      }).from(events)
+        .leftJoin(users, eq(events.host_id, users.id))
+        .where(eq(events.id, eventId))
+        .limit(1);
 
-      if (event) {
-        const hostName = event.host?.first_name || 'друга';
+      if (eventResult?.event) {
+        const event = eventResult.event;
+        const host = eventResult.host;
+        const hostName = host?.first_name || 'друга';
         const eventDate = new Date(event.date);
         const dateStr = eventDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
         
@@ -142,14 +172,14 @@ bot.command('start', async (ctx) => {
         }
 
         // Notify host
-        if (event.host?.telegram_id && event.host.telegram_id !== telegramId) {
+        if (host?.telegram_id && host.telegram_id !== telegramId) {
           const guestName = ctx.from?.first_name || ctx.from?.username || 'Гость';
           const guestCountText = guestCount > 1 ? ` (${guestCount} чел.)` : '';
           const statusLabel = status === 'accepted' ? `придёт${guestCountText}` : 'не сможет';
           const emoji = status === 'accepted' ? '✅' : '❌';
           
           await bot.api.sendMessage(
-            event.host.telegram_id,
+            host.telegram_id,
             `${emoji} *${guestName}* ${statusLabel}!\n\n` +
             `📅 Ифтар ${dateStr}\n` +
             `📍 ${event.location || 'Место не указано'}`,
@@ -165,16 +195,21 @@ bot.command('start', async (ctx) => {
     const eventId = startParam.replace('event_', '');
     
     // Fetch event details
-    const { data: event } = await supabase
-      .from('events')
-      .select('*, host:users(*)')
-      .eq('id', eventId)
-      .single();
+    const [eventResult] = await db.select({
+      event: events,
+      host: users,
+    }).from(events)
+      .leftJoin(users, eq(events.host_id, users.id))
+      .where(eq(events.id, eventId))
+      .limit(1);
 
-    if (!event) {
+    if (!eventResult?.event) {
       await ctx.reply('❌ Приглашение не найдено или устарело.');
       return;
     }
+
+    const event = eventResult.event;
+    const host = eventResult.host;
 
     // Format date
     const eventDate = new Date(event.date);
@@ -185,55 +220,27 @@ bot.command('start', async (ctx) => {
 
     // Get or create user
     const telegramId = ctx.from?.id;
-    let userId: string | null = null;
     
     if (telegramId) {
-      let { data: user } = await supabase
-        .from('users')
-        .select('id')
-        .eq('telegram_id', telegramId)
-        .single();
-
-      if (!user) {
-        const { data: newUser } = await supabase
-          .from('users')
-          .insert({
-            telegram_id: telegramId,
-            username: ctx.from?.username,
-            first_name: ctx.from?.first_name,
-            last_name: ctx.from?.last_name,
-          })
-          .select('id')
-          .single();
-        user = newUser;
-      }
-      userId = user?.id || null;
+      const user = await getOrCreateUser(telegramId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
 
       // Check if already invited
-      if (userId) {
-        const { data: existingInvite } = await supabase
-          .from('invitations')
-          .select('id, status')
-          .eq('event_id', eventId)
-          .eq('guest_id', userId)
-          .single();
+      const [existingInvite] = await db.select().from(invitations)
+        .where(and(eq(invitations.event_id, eventId), eq(invitations.guest_id, user.id))).limit(1);
 
-        if (!existingInvite) {
-          // Create invitation
-          await supabase
-            .from('invitations')
-            .insert({
-              event_id: eventId,
-              guest_id: userId,
-              status: 'pending',
-            });
-        }
+      if (!existingInvite) {
+        // Create invitation
+        await db.insert(invitations).values({
+          event_id: eventId,
+          guest_id: user.id,
+          status: 'pending',
+        });
       }
     }
 
-    const hostName = event.host?.first_name || event.host?.username || 'Друг';
+    const hostName = host?.first_name || host?.username || 'Друг';
     const location = event.location || 'Уточняется';
-    const time = event.iftar_time ? event.iftar_time.slice(0, 5) : '';
+    const eventTime = event.iftar_time ? event.iftar_time.slice(0, 5) : '';
     const address = event.address || '';
     
     // Calculate Ramadan day (Feb 17, 2026 = 1 Ramadan)
@@ -249,16 +256,12 @@ bot.command('start', async (ctx) => {
       .row()
       .webApp('📅 Открыть календарь', MINI_APP_URL);
 
-    // Clean invitation message
     const inviteMessage = 
       `🌙 *Приглашение на ифтар*\n\n` +
-      
       `*${hostName}* зовёт тебя разделить ифтар\n\n` +
-      
       `📅  *${ramadanDay} Рамадан* · ${dateStr}\n` +
-      `⏰  ${time || '—'}\n` +
+      `⏰  ${eventTime || '—'}\n` +
       `📍  ${location}${address ? ` · ${address}` : ''}\n` +
-      
       `${event.notes ? `\n💬 _${event.notes}_\n` : ''}` +
       `\n*Ты придёшь?*`;
 
@@ -298,55 +301,26 @@ bot.on('callback_query:data', async (ctx) => {
     const guestCount = parseInt(guestCountStr) || 1;
     const telegramId = ctx.from.id;
     
-    // Get or create user
-    let { data: user } = await supabase
-      .from('users')
-      .select('id')
-      .eq('telegram_id', telegramId)
-      .single();
-
-    if (!user) {
-      const { data: newUser } = await supabase
-        .from('users')
-        .insert({
-          telegram_id: telegramId,
-          username: ctx.from.username,
-          first_name: ctx.from.first_name,
-          last_name: ctx.from.last_name,
-        })
-        .select('id')
-        .single();
-      user = newUser;
-    }
+    const user = await getOrCreateUser(telegramId, ctx.from.username, ctx.from.first_name, ctx.from.last_name);
 
     if (user) {
-      // Update or create invitation
-      const { data: existing } = await supabase
-        .from('invitations')
-        .select('id')
-        .eq('event_id', eventId)
-        .eq('guest_id', user.id)
-        .single();
+      const [existing] = await db.select().from(invitations)
+        .where(and(eq(invitations.event_id, eventId), eq(invitations.guest_id, user.id))).limit(1);
 
       if (existing) {
-        await supabase
-          .from('invitations')
-          .update({ 
-            status, 
-            guest_count: status === 'accepted' ? guestCount : 1,
-            responded_at: new Date().toISOString() 
-          })
-          .eq('id', existing.id);
+        await db.update(invitations).set({
+          status,
+          guest_count: status === 'accepted' ? guestCount : 1,
+          responded_at: new Date(),
+        }).where(eq(invitations.id, existing.id));
       } else {
-        await supabase
-          .from('invitations')
-          .insert({
-            event_id: eventId,
-            guest_id: user.id,
-            status,
-            guest_count: status === 'accepted' ? guestCount : 1,
-            responded_at: new Date().toISOString(),
-          });
+        await db.insert(invitations).values({
+          event_id: eventId,
+          guest_id: user.id,
+          status,
+          guest_count: status === 'accepted' ? guestCount : 1,
+          responded_at: new Date(),
+        });
       }
     }
 
@@ -364,22 +338,19 @@ bot.on('callback_query:data', async (ctx) => {
 
     // Notify host about the response
     try {
-      const { data: event } = await supabase
-        .from('events')
-        .select('host:users(telegram_id, first_name), date, location')
-        .eq('id', eventId)
-        .single();
+      const [eventResult] = await db.select({
+        event: events,
+        host: users,
+      }).from(events)
+        .leftJoin(users, eq(events.host_id, users.id))
+        .where(eq(events.id, eventId))
+        .limit(1);
 
-      if (event?.host?.telegram_id && event.host.telegram_id !== telegramId) {
+      if (eventResult?.host?.telegram_id && eventResult.host.telegram_id !== telegramId) {
         const guestName = ctx.from.first_name || ctx.from.username || 'Гость';
-        const eventDate = new Date(event.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+        const eventDate = new Date(eventResult.event.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
         
-        const statusEmoji: Record<string, string> = {
-          accepted: '✅',
-          declined: '❌',
-          maybe: '🤔',
-        };
-        
+        const statusEmoji: Record<string, string> = { accepted: '✅', declined: '❌', maybe: '🤔' };
         const guestCountText = guestCount > 1 ? ` (${guestCount} чел.)` : '';
         const statusLabel: Record<string, string> = {
           accepted: `придёт${guestCountText}`,
@@ -388,10 +359,10 @@ bot.on('callback_query:data', async (ctx) => {
         };
         
         await bot.api.sendMessage(
-          event.host.telegram_id,
+          eventResult.host.telegram_id,
           `${statusEmoji[status]} *${guestName}* ${statusLabel[status]}!\n\n` +
           `📅 Ифтар ${eventDate}\n` +
-          `📍 ${event.location || 'Место не указано'}`,
+          `📍 ${eventResult.event.location || 'Место не указано'}`,
           { parse_mode: 'Markdown' }
         );
       }
@@ -423,40 +394,31 @@ bot.on('inline_query', async (ctx) => {
   const query = ctx.inlineQuery.query;
   const telegramId = ctx.from.id;
   
-  // Get user's events (as host)
-  const { data: user } = await supabase
-    .from('users')
-    .select('id')
-    .eq('telegram_id', telegramId)
-    .single();
+  const [user] = await db.select().from(users).where(eq(users.telegram_id, telegramId)).limit(1);
 
   if (!user) {
     await ctx.answerInlineQuery([]);
     return;
   }
 
-  const { data: events } = await supabase
-    .from('events')
-    .select('*, host:users(*)')
-    .eq('host_id', user.id)
-    .gte('date', new Date().toISOString().split('T')[0])
-    .order('date', { ascending: true })
+  const today = new Date().toISOString().split('T')[0];
+  const eventsList = await db.select().from(events)
+    .where(and(eq(events.host_id, user.id), gte(events.date, today)))
+    .orderBy(asc(events.date))
     .limit(10);
 
-  // Filter by query if provided
-  const filtered = query 
-    ? (events || []).filter(e => 
+  const filtered = query
+    ? eventsList.filter(e =>
         e.location?.toLowerCase().includes(query.toLowerCase()) ||
         e.date.includes(query)
       )
-    : events || [];
+    : eventsList;
 
   const results = filtered.map(event => {
     const eventDate = new Date(event.date);
     const dateStr = eventDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
     const inviteUrl = `https://iftar.adntgv.com/invite/${event.id}`;
     
-    // Calculate Ramadan day
     const ramadanStart = new Date('2026-02-17');
     const ramadanDay = Math.floor((eventDate.getTime() - ramadanStart.getTime()) / (24 * 60 * 60 * 1000)) + 1;
     
@@ -488,28 +450,37 @@ async function sendReminders() {
 
   console.log(`Checking reminders for ${tomorrowStr}...`);
 
-  // Get all events happening tomorrow
-  const { data: events } = await supabase
-    .from('events')
-    .select('*, host:users(*), invitations(*, guest:users(*))')
-    .eq('date', tomorrowStr);
+  const eventsList = await db.select({
+    event: events,
+    host: users,
+  }).from(events)
+    .leftJoin(users, eq(events.host_id, users.id))
+    .where(eq(events.date, tomorrowStr));
 
-  if (!events || events.length === 0) {
+  if (eventsList.length === 0) {
     console.log('No events tomorrow');
     return;
   }
 
-  for (const event of events) {
+  for (const { event, host } of eventsList) {
     const eventDate = new Date(event.date);
     const dateStr = eventDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
-    const hostName = event.host?.first_name || 'Хозяин';
+    const hostName = host?.first_name || 'Хозяин';
+
+    // Get event invitations
+    const eventInvitations = await db.select({
+      invitation: invitations,
+      guest: users,
+    }).from(invitations)
+      .leftJoin(users, eq(invitations.guest_id, users.id))
+      .where(eq(invitations.event_id, event.id));
 
     // Send reminder to accepted guests
-    for (const inv of event.invitations || []) {
-      if (inv.status === 'accepted' && inv.guest?.telegram_id) {
+    for (const { invitation, guest } of eventInvitations) {
+      if (invitation.status === 'accepted' && guest?.telegram_id) {
         try {
           await bot.api.sendMessage(
-            inv.guest.telegram_id,
+            guest.telegram_id,
             `🔔 *Напоминание!*\n\n` +
             `Завтра ифтар у ${hostName}!\n` +
             `📅 ${dateStr}\n` +
@@ -517,27 +488,27 @@ async function sendReminders() {
             `📍 ${event.location || 'Место уточняется'}`,
             { parse_mode: 'Markdown' }
           );
-          console.log(`Reminder sent to ${inv.guest.telegram_id}`);
+          console.log(`Reminder sent to ${guest.telegram_id}`);
         } catch (e) {
-          console.error(`Failed to send reminder to ${inv.guest.telegram_id}:`, e);
+          console.error(`Failed to send reminder to ${guest.telegram_id}:`, e);
         }
       }
     }
 
     // Send reminder to host about who's coming
-    const acceptedInvitations = (event.invitations || []).filter((i: any) => i.status === 'accepted');
-    const totalGuests = acceptedInvitations.reduce((sum: number, i: any) => sum + (i.guest_count || 1), 0);
+    const acceptedInvitations = eventInvitations.filter(i => i.invitation.status === 'accepted');
+    const totalGuests = acceptedInvitations.reduce((sum, i) => sum + (i.invitation.guest_count || 1), 0);
     const acceptedNames = acceptedInvitations
-      .map((i: any) => {
+      .map(i => {
         const name = i.guest?.first_name || i.guest?.username || 'Гость';
-        return i.guest_count > 1 ? `${name} (+${i.guest_count - 1})` : name;
+        return i.invitation.guest_count > 1 ? `${name} (+${i.invitation.guest_count - 1})` : name;
       })
       .join(', ');
 
-    if (event.host?.telegram_id) {
+    if (host?.telegram_id) {
       try {
         await bot.api.sendMessage(
-          event.host.telegram_id,
+          host.telegram_id,
           `🔔 *Напоминание!*\n\n` +
           `Завтра твой ифтар!\n` +
           `📅 ${dateStr}\n` +
@@ -545,7 +516,7 @@ async function sendReminders() {
           `👥 Придут (${totalGuests} чел.): ${acceptedNames || 'пока никто'}`,
           { parse_mode: 'Markdown' }
         );
-        console.log(`Host reminder sent to ${event.host.telegram_id}`);
+        console.log(`Host reminder sent to ${host.telegram_id}`);
       } catch (e) {
         console.error(`Failed to send host reminder:`, e);
       }
@@ -555,7 +526,6 @@ async function sendReminders() {
 
 // Command to manually trigger reminders (for testing)
 bot.command('send_reminders', async (ctx) => {
-  // Only allow from specific admin user
   if (ctx.from?.id !== 289310951 && ctx.from?.id !== 6454712844) {
     return;
   }
@@ -571,9 +541,8 @@ bot.command('send_reminders', async (ctx) => {
     // ignore
   }
   bot.start();
-  console.log('Bot started in polling mode');
+  console.log('Bot started in polling mode (using PostgreSQL with Drizzle)');
   trackEvent('bot_started');
 })();
 
-// Export for external cron trigger
 export { bot, sendReminders };

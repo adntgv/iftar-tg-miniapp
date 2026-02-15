@@ -8,9 +8,10 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.0",
+    "drizzle-orm": "^0.45.1",
     "grammy": "^1.30.0",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "postgres": "^3.4.8"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

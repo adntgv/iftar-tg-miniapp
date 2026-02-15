@@ -58,6 +58,13 @@ export function CreateEventModal({
 
       setCreatedEventId(event.id);
       onEventCreated();
+      
+      // Track event creation
+      window.umami?.track('event_created', { 
+        date: format(selectedDate, 'yyyy-MM-dd'),
+        hasAddress: !!address,
+        hasNotes: !!notes
+      });
     } catch (error) {
       console.error('Failed to create event:', error);
       setIsLoading(false);
@@ -69,6 +76,9 @@ export function CreateEventModal({
     
     const inviteUrl = `https://iftar.adntgv.com/invite/${createdEventId}`;
     const tg = window.Telegram?.WebApp;
+    
+    // Track share
+    window.umami?.track('event_shared', { eventId: createdEventId, source: 'create_modal' });
     
     if (tg?.openTelegramLink) {
       tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}`);

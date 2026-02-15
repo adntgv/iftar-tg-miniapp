@@ -38,6 +38,9 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
       await respondToInvitation(myInvitation.id, status);
       onUpdate();
       onRSVP?.(status);
+      
+      // Track RSVP
+      window.umami?.track(`rsvp_${status}`, { eventId: event.id });
     } catch (error) {
       console.error('Failed to respond:', error);
     } finally {
@@ -49,6 +52,10 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
     setIsDeleting(true);
     try {
       await deleteEvent(event.id);
+      
+      // Track deletion
+      window.umami?.track('event_deleted', { eventId: event.id });
+      
       onClose();
       onUpdate();
     } catch (error) {
@@ -70,6 +77,9 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
   const shareEvent = () => {
     const inviteUrl = `https://iftar.adntgv.com/invite/${event.id}`;
     const tg = window.Telegram?.WebApp;
+    
+    // Track share
+    window.umami?.track('event_shared', { eventId: event.id, source: 'event_details' });
     
     if (tg?.openTelegramLink) {
       tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}`);
@@ -106,6 +116,9 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
       `&details=${encodeURIComponent(details)}` +
       `&location=${encodeURIComponent(location)}` +
       `&ctz=Asia/Almaty`;
+    
+    // Track calendar export
+    window.umami?.track('calendar_exported', { eventId: event.id });
     
     window.open(url, '_blank');
   };

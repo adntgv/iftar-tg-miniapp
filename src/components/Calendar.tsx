@@ -3,17 +3,18 @@ import { format, eachDayOfInterval, isSameDay, isToday, getDay } from 'date-fns'
 import { ru } from 'date-fns/locale';
 import { Moon } from 'lucide-react';
 import type { Event } from '../lib/supabase';
-import { RAMADAN_START, RAMADAN_END, getRamadanDay } from '../lib/iftarTimes';
+import { RAMADAN_START, RAMADAN_END, getRamadanDay, getDayTimes } from '../lib/iftarTimes';
 
 interface CalendarProps {
   events: Event[];
   onDateSelect: (date: Date) => void;
   selectedDate: Date | null;
+  cityId?: string;
 }
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
-export function Calendar({ events, onDateSelect, selectedDate }: CalendarProps) {
+export function Calendar({ events, onDateSelect, selectedDate, cityId = 'astana' }: CalendarProps) {
   // Get all Ramadan days with padding for week alignment
   const { ramadanDays, emptySlotsBefore } = useMemo(() => {
     const days = eachDayOfInterval({ start: RAMADAN_START, end: RAMADAN_END });
@@ -101,7 +102,9 @@ export function Calendar({ events, onDateSelect, selectedDate }: CalendarProps) 
           const isSelected = selectedDate && isSameDay(day, selectedDate);
           const isTodayDate = isToday(day);
           const hasEvents = getEventsForDate(day).length > 0;
-          const ramadanDay = getRamadanDay(day);
+          const _ramadanDay = getRamadanDay(day);
+          const dayTimes = getDayTimes(day, cityId);
+          void _ramadanDay;
 
           return (
             <button
@@ -127,12 +130,14 @@ export function Calendar({ events, onDateSelect, selectedDate }: CalendarProps) 
                 minHeight: '44px',
               }}
             >
-              {/* Ramadan day number */}
-              <span style={{ fontSize: '15px', fontWeight: 600 }}>{ramadanDay}</span>
-              
               {/* Gregorian date */}
-              <span className="text-muted" style={{ fontSize: '9px' }}>
-                {format(day, 'd.MM', { locale: ru })}
+              <span style={{ fontSize: '14px', fontWeight: 600 }}>
+                {format(day, 'd MMM', { locale: ru }).replace('.', '')}
+              </span>
+              
+              {/* Iftar time */}
+              <span className="text-gold" style={{ fontSize: '9px', fontWeight: 500 }}>
+                {dayTimes.iftar}
               </span>
               
               {/* Event indicator */}
