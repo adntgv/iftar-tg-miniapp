@@ -284,8 +284,8 @@ function App() {
                       <div style={{ fontWeight: 500 }}>{new Date(event.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</div>
                       <div className="text-muted" style={{ fontSize: '14px' }}>{event.location || 'Место не указано'}</div>
                     </div>
-                    <span className={`badge ${event.host_id === user?.id ? 'badge-primary' : event.invitation_status === 'accepted' ? 'badge-primary' : event.invitation_status === 'pending' ? 'badge-gold' : 'badge-indigo'}`}>
-                      {event.host_id === user?.id ? 'Хозяин' : event.invitation_status === 'accepted' ? 'Иду' : event.invitation_status === 'pending' ? 'Ожидает' : 'Может быть'}
+                    <span className={`badge ${event.host_id === user?.id && event.is_host_mode !== false ? 'badge-primary' : event.invitation_status === 'accepted' ? 'badge-primary' : event.invitation_status === 'pending' ? 'badge-gold' : 'badge-indigo'}`}>
+                      {event.host_id === user?.id && event.is_host_mode !== false ? 'Хозяин' : event.invitation_status === 'accepted' ? 'Иду' : event.invitation_status === 'pending' ? 'Ожидает' : 'Может быть'}
                     </span>
                   </div>
                 ))}
