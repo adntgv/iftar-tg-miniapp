@@ -65,7 +65,7 @@ body {
   height: -webkit-fill-available;
   overflow: hidden;
   padding-top: calc(var(--tg-content-safe-area-inset-top, 0px) + 24px);
-  padding-bottom: var(--tg-content-safe-area-inset-bottom, 0px);
+  padding-bottom: calc(var(--tg-content-safe-area-inset-bottom, 0px) + var(--tg-safe-area-inset-bottom, 0px) + 16px);
 }
 
 .app-content {
@@ -325,7 +325,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   overflow-y: auto;
   overscroll-behavior: contain;
   animation: slideUp 0.25s ease-out;
-  padding-bottom: env(safe-area-inset-bottom, 16px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--tg-safe-area-inset-bottom, 0px) + 16px);
 }
 
 @keyframes fadeIn {
