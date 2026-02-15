@@ -176,7 +176,7 @@ export function CreateEventModal({
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal-content">
+      <div className="modal-content safe-area-bottom">
         {/* Compact header with Ramadan day */}
         <div style={{ 
           display: 'flex', 
