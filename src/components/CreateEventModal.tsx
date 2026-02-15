@@ -60,7 +60,7 @@ export function CreateEventModal({
   }, [isOpen]);
 
   const handleSubmit = async () => {
-    if (!location.trim()) return;
+    if (isHost && !location.trim()) return;
     
     setIsLoading(true);
     
@@ -246,7 +246,7 @@ export function CreateEventModal({
               type="text"
               value={location}
               onChange={e => setLocation(e.target.value)}
-              placeholder="Место или адрес (обязательно)"
+              placeholder={isHost ? "Место или адрес (обязательно)" : "Место или адрес (необязательно)"}
               className="input"
               style={{ flex: 1 }}
             />
@@ -295,7 +295,7 @@ export function CreateEventModal({
           {/* Submit button */}
           <button
             onClick={handleSubmit}
-            disabled={isLoading || !location.trim()}
+            disabled={isLoading || (isHost && !location.trim())}
             className="btn btn-primary"
             style={{ 
               width: '100%', 
