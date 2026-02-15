@@ -111,14 +111,16 @@ export function CreateEventModal({
     
     const inviteUrl = `https://iftar.adntgv.com/invite/${createdEventId}`;
     const tg = window.Telegram?.WebApp;
+    const shareText = `🌙 Приглашаю на ифтар!\n📅 ${format(selectedDate, 'dd.MM.yyyy')}\n⏰ ${iftarTime}${location ? `\n📍 ${location}` : ''}`;
     
     // Track share
     window.umami?.track('event_shared', { eventId: createdEventId, source: 'create_modal' });
     
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(shareText)}`;
     if (tg?.openTelegramLink) {
-      tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}`);
+      tg.openTelegramLink(shareUrl);
     } else {
-      window.open(`https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}`, '_blank');
+      window.open(shareUrl, '_blank');
     }
   };
 

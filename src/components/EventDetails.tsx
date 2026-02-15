@@ -87,15 +87,16 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
   const shareEvent = () => {
     const inviteUrl = `https://iftar.adntgv.com/invite/${event.id}`;
     const tg = window.Telegram?.WebApp;
+    const shareText = `🌙 Приглашаю на ифтар!\n📅 ${event.date}\n⏰ ${event.iftar_time?.slice(0, 5) || ''}${event.location ? `\n📍 ${event.location}` : ''}`;
     
     // Track share
     window.umami?.track('event_shared', { eventId: event.id, source: 'event_details' });
     
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(shareText)}`;
     if (tg?.openTelegramLink) {
-      tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}`);
+      tg.openTelegramLink(shareUrl);
     } else {
-      // Fallback for non-Telegram
-      window.open(`https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}`, '_blank');
+      window.open(shareUrl, '_blank');
     }
   };
 
