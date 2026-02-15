@@ -3,45 +3,36 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.iftar-miniapp.rule=Host(`iftar.adntgv.com`)"
-      - "traefik.http.routers.iftar-miniapp.entrypoints=http"
-      - "traefik.http.services.iftar-miniapp.loadbalancer.server.port=80"
-    networks:
-      - coolify
-      - default
-    restart: unless-stopped
+    environment:
+      - SERVICE_FQDN_MINIAPP_80
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   api:
     build:
       context: ./api
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.iftar-api.rule=Host(`iftar-api.adntgv.com`)"
-      - "traefik.http.routers.iftar-api.entrypoints=http"
-      - "traefik.http.services.iftar-api.loadbalancer.server.port=3002"
-    networks:
-      - coolify
-      - default
-    restart: unless-stopped
+      - SERVICE_FQDN_API_3002
+      - DATABASE_URL=${DATABASE_URL:?}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3002/api/cities"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   bot:
     build:
       context: ./bot
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - BOT_TOKEN=${BOT_TOKEN}
-      - MINI_APP_URL=https://iftar.adntgv.com
+      - DATABASE_URL=${DATABASE_URL:?}
+      - BOT_TOKEN=${BOT_TOKEN:?}
+      - MINI_APP_URL=${SERVICE_FQDN_MINIAPP_80:-https://iftar.adntgv.com}
       - API_URL=http://api:3002
-    networks:
-      - coolify
-      - default
-    restart: unless-stopped
 
   og-api:
     build:
@@ -50,10 +41,3 @@ services:
     environment:
       - API_URL=http://api:3002
       - BOT_USERNAME=iftar_coordinator_bot
-    networks:
-      - default
-    restart: unless-stopped
-
-networks:
-  coolify:
-    external: true
