@@ -21,8 +21,8 @@ export interface CityInfo {
 }
 
 // Ramadan 2026 dates
-export const RAMADAN_START = new Date('2026-02-17');
-export const RAMADAN_END = new Date('2026-03-18');
+export const RAMADAN_START = new Date('2026-02-19');
+export const RAMADAN_END = new Date('2026-03-19');
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002';
 

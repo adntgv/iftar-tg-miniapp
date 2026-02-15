@@ -61,7 +61,7 @@ export function Calendar({ events, onDateSelect, selectedDate, prayerTimes }: Ca
       }}>
         <Moon size={18} className="text-gold" />
         <span style={{ fontWeight: 600 }}>Рамадан 1447</span>
-        <span className="text-muted" style={{ fontSize: '14px' }}>(17 фев — 18 мар)</span>
+        <span className="text-muted" style={{ fontSize: '14px' }}>(19 фев — 19 мар)</span>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '4px' }}>

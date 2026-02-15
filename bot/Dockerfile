@@ -5,4 +5,4 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 
-CMD ["npx", "tsx", "index.ts"]
+CMD ["node", "--import", "tsx", "index.ts"]
