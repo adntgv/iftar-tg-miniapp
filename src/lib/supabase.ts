@@ -1,6 +1,6 @@
 // API client for Iftar backend (migrated from Supabase to self-hosted PostgreSQL)
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002';
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://iftar-api.adntgv.com' : 'http://localhost:3002');
 
 // Types
 export interface User {
