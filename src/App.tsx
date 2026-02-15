@@ -307,7 +307,7 @@ function App() {
         )}
 
         {selectedEvent && user && (
-          <EventDetails event={selectedEvent} currentUser={user} onClose={() => setSelectedEvent(null)} onUpdate={handleEventUpdated} onRSVP={handleRSVP} isHost={selectedEvent.host_id === user.id} />
+          <EventDetails event={selectedEvent} currentUser={user} onClose={() => setSelectedEvent(null)} onUpdate={handleEventUpdated} onRSVP={handleRSVP} isHost={selectedEvent.is_host_mode !== false && selectedEvent.host_id === user.id} />
         )}
 
         {/* City picker bottom sheet */}

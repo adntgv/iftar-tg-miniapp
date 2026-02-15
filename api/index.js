@@ -3,7 +3,7 @@ import cors from 'cors';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq, and, gte, inArray, asc } from 'drizzle-orm';
-import { pgTable, uuid, bigint, text, timestamp, date, time, integer, unique } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, bigint, text, timestamp, date, time, integer, unique, boolean } from 'drizzle-orm/pg-core';
 
 // Schema
 const users = pgTable('users', {
@@ -28,6 +28,7 @@ const events = pgTable('events', {
   location: text('location'),
   address: text('address'),
   notes: text('notes'),
+  is_host_mode: boolean('is_host_mode').default(true),
   created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
@@ -196,7 +197,7 @@ app.post('/api/check-collisions', async (req, res) => {
 // Create event
 app.post('/api/events', async (req, res) => {
   try {
-    const { host_id, date: eventDate, iftar_time, location, address, notes } = req.body;
+    const { host_id, date: eventDate, iftar_time, location, address, notes, is_host_mode } = req.body;
 
     const [event] = await db.insert(events).values({
       host_id,
@@ -205,6 +206,7 @@ app.post('/api/events', async (req, res) => {
       location,
       address,
       notes,
+      is_host_mode: is_host_mode !== false,
     }).returning();
 
     const [host] = await db.select().from(users).where(eq(users.id, host_id)).limit(1);

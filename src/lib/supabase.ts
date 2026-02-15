@@ -24,6 +24,7 @@ export interface Event {
   location: string | null;
   address: string | null;
   notes: string | null;
+  is_host_mode?: boolean;
   created_at: string;
   host?: User;
   invitation_status?: string;
@@ -97,7 +98,8 @@ export async function createEvent(
   iftarTime?: string,
   location?: string,
   address?: string,
-  notes?: string
+  notes?: string,
+  isHostMode?: boolean
 ): Promise<Event> {
   return api<Event>('/api/events', {
     method: 'POST',
@@ -108,6 +110,7 @@ export async function createEvent(
       location,
       address,
       notes,
+      is_host_mode: isHostMode !== false,
     }),
   });
 }

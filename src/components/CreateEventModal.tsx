@@ -71,7 +71,8 @@ export function CreateEventModal({
         iftarTime,
         location || undefined,
         address || undefined,
-        notes || undefined
+        notes || undefined,
+        isHost
       );
 
       // If user is invited (not hosting), add self as accepted guest
