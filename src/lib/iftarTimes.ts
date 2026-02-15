@@ -24,7 +24,7 @@ export interface CityInfo {
 export const RAMADAN_START = new Date('2026-02-19');
 export const RAMADAN_END = new Date('2026-03-19');
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002';
+const API_URL = import.meta.env.VITE_API_URL || 'https://iftar-api.adntgv.com';
 
 // In-memory cache
 let prayerTimesCache: Map<string, DayTimes[]> = new Map();
