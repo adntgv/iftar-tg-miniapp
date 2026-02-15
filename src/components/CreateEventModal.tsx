@@ -2,8 +2,17 @@ import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { X, MapPin, Clock, ChevronDown, ChevronUp, Share2 } from 'lucide-react';
-import { createEvent, type User } from '../lib/supabase';
-import { getIftarTime, getRamadanDay } from '../lib/iftarTimes';
+import { createEvent, ensureInvitation, getEventDetails, respondToInvitation, type User } from '../lib/supabase';
+import { getIftarTime, getRamadanDay, type DayTimes } from '../lib/iftarTimes';
+
+function getInvitationTime(iftarTime: string): string {
+  // Default invitation time = 1 hour before iftar
+  const [h, m] = iftarTime.split(':').map(Number);
+  const totalMin = h * 60 + m - 60;
+  const nh = Math.floor(totalMin / 60);
+  const nm = totalMin % 60;
+  return `${nh.toString().padStart(2, '0')}:${nm.toString().padStart(2, '0')}`;
+}
 
 interface CreateEventModalProps {
   isOpen: boolean;
@@ -11,6 +20,7 @@ interface CreateEventModalProps {
   selectedDate: Date;
   currentUser: User;
   onEventCreated: () => void;
+  prayerTimes?: DayTimes[];
 }
 
 export function CreateEventModal({ 
@@ -18,20 +28,28 @@ export function CreateEventModal({
   onClose, 
   selectedDate, 
   currentUser,
-  onEventCreated 
+  onEventCreated,
+  prayerTimes = [],
 }: CreateEventModalProps) {
   const [location, setLocation] = useState('');
-  const [address, setAddress] = useState('');
+  const [address] = useState('');
   const [notes, setNotes] = useState('');
-  const [iftarTime, setIftarTime] = useState(() => getIftarTime(selectedDate));
+  const [isHost, setIsHost] = useState(true);
+  const getActualIftarTime = (date: Date): string => {
+    const dateStr = date.toISOString().split('T')[0];
+    const dayTimes = prayerTimes.find(t => t.date === dateStr || (t as any).Date === dateStr);
+    return dayTimes?.maghrib || getIftarTime(date);
+  };
+
+  const [iftarTime, setIftarTime] = useState(() => getInvitationTime(getActualIftarTime(selectedDate)));
   const [isLoading, setIsLoading] = useState(false);
   const [showAdditional, setShowAdditional] = useState(false);
   const [createdEventId, setCreatedEventId] = useState<string | null>(null);
 
-  // Update iftar time when date changes
+  // Update iftar time when date changes (1h before iftar)
   useEffect(() => {
-    setIftarTime(getIftarTime(selectedDate));
-  }, [selectedDate]);
+    setIftarTime(getInvitationTime(getActualIftarTime(selectedDate)));
+  }, [selectedDate, prayerTimes]);
 
   // Lock body scroll when modal is open
   useEffect(() => {
@@ -56,6 +74,21 @@ export function CreateEventModal({
         notes || undefined
       );
 
+      // If user is invited (not hosting), add self as accepted guest
+      if (!isHost) {
+        try {
+          await ensureInvitation(event.id, currentUser.id);
+          // Auto-accept the invitation
+          const details = await getEventDetails(event.id);
+          const myInvite = details?.invitations?.find((i: any) => i.guest_id === currentUser.id);
+          if (myInvite) {
+            await respondToInvitation(myInvite.id, 'accepted');
+          }
+        } catch (e) {
+          console.error('Failed to add self as guest:', e);
+        }
+      }
+
       setCreatedEventId(event.id);
       onEventCreated();
       
@@ -63,7 +96,8 @@ export function CreateEventModal({
       window.umami?.track('event_created', { 
         date: format(selectedDate, 'yyyy-MM-dd'),
         hasAddress: !!address,
-        hasNotes: !!notes
+        hasNotes: !!notes,
+        isHost,
       });
     } catch (error) {
       console.error('Failed to create event:', error);
@@ -165,6 +199,34 @@ export function CreateEventModal({
         </div>
 
         <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* Host / Invited toggle */}
+          <div style={{
+            display: 'flex', borderRadius: '10px', overflow: 'hidden',
+            border: '1px solid var(--color-border)',
+          }}>
+            <button
+              onClick={() => setIsHost(true)}
+              style={{
+                flex: 1, padding: '10px', border: 'none', cursor: 'pointer',
+                backgroundColor: isHost ? 'rgba(22, 101, 52, 0.4)' : 'transparent',
+                color: 'var(--color-text)', fontSize: '14px', fontWeight: isHost ? 600 : 400,
+              }}
+            >
+              🏠 Я хозяин
+            </button>
+            <button
+              onClick={() => setIsHost(false)}
+              style={{
+                flex: 1, padding: '10px', border: 'none', cursor: 'pointer',
+                borderLeft: '1px solid var(--color-border)',
+                backgroundColor: !isHost ? 'rgba(212, 175, 55, 0.3)' : 'transparent',
+                color: 'var(--color-text)', fontSize: '14px', fontWeight: !isHost ? 600 : 400,
+              }}
+            >
+              📨 Меня позвали
+            </button>
+          </div>
+
           {/* Essential: Time */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <Clock size={20} className="text-muted" />
@@ -177,14 +239,14 @@ export function CreateEventModal({
             />
           </div>
 
-          {/* Essential: Location */}
+          {/* Essential: Location + Address combined */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <MapPin size={20} className="text-muted" />
             <input
               type="text"
               value={location}
               onChange={e => setLocation(e.target.value)}
-              placeholder="Место (обязательно)"
+              placeholder="Место или адрес (обязательно)"
               className="input"
               style={{ flex: 1 }}
             />
@@ -217,15 +279,6 @@ export function CreateEventModal({
               borderRadius: '12px',
               marginTop: '-8px'
             }}>
-              {/* Address */}
-              <input
-                type="text"
-                value={address}
-                onChange={e => setAddress(e.target.value)}
-                placeholder="Адрес"
-                className="input"
-              />
-
               {/* Notes */}
               <textarea
                 value={notes}
@@ -255,7 +308,7 @@ export function CreateEventModal({
                 <span className="animate-spin" style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%' }} />
                 Создаю...
               </span>
-            ) : 'Создать 🌙'}
+            ) : isHost ? 'Создать ифтар 🌙' : 'Записать приглашение 📨'}
           </button>
         </div>
       </div>

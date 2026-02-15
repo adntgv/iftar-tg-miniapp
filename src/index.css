@@ -70,7 +70,7 @@ body {
 
 .app-content {
   height: 100%;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 /* Lock body scroll when modal is open */

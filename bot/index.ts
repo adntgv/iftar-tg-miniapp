@@ -303,11 +303,16 @@ bot.on('callback_query:data', async (ctx) => {
     
     const user = await getOrCreateUser(telegramId, ctx.from.username, ctx.from.first_name, ctx.from.last_name);
 
+    let statusChanged = true;
     if (user) {
       const [existing] = await db.select().from(invitations)
         .where(and(eq(invitations.event_id, eventId), eq(invitations.guest_id, user.id))).limit(1);
 
       if (existing) {
+        // Skip if same status and guest count (dedup)
+        if (existing.status === status && (existing.guest_count || 1) === guestCount) {
+          statusChanged = false;
+        }
         await db.update(invitations).set({
           status,
           guest_count: status === 'accepted' ? guestCount : 1,
@@ -332,11 +337,12 @@ bot.on('callback_query:data', async (ctx) => {
     };
 
     await ctx.answerCallbackQuery({ 
-      text: statusText[status] || 'Ответ записан',
-      show_alert: true
+      text: statusChanged ? (statusText[status] || 'Ответ записан') : 'Уже записано ✓',
+      show_alert: statusChanged
     });
 
-    // Notify host about the response
+    // Notify host only if status actually changed
+    if (!statusChanged) return;
     try {
       const [eventResult] = await db.select({
         event: events,

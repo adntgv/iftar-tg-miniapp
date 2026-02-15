@@ -13,7 +13,9 @@ const users = pgTable('users', {
   first_name: text('first_name'),
   last_name: text('last_name'),
   avatar_url: text('avatar_url'),
-  city: text('city').default('astana'),
+  city: text('city').default('Астана'),
+  city_lat: text('city_lat'),
+  city_lng: text('city_lng'),
   created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
@@ -340,16 +342,117 @@ app.post('/api/users/by-telegram-ids', async (req, res) => {
   }
 });
 
-// Update user city
+// ===== Muftyat.kz API proxy with caching =====
+const prayerTimesCache = new Map(); // key: "year/lat/lng" -> { data, ts }
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24h
+
+// Major KZ cities (pre-cached for fast selection)
+// Exact coords from muftyat.kz cities API (must match exactly for prayer-times to work)
+const MAJOR_CITIES = [
+  { id: '3', title: 'Астана', lat: '51.133333', lng: '71.433333' },
+  { id: '72', title: 'Алматы', lat: '43.238293', lng: '76.945465' },
+  { id: '57', title: 'Шымкент', lat: '42.368009', lng: '69.612769' },
+  { id: '20', title: 'Ақтөбе', lat: '50.300377', lng: '57.154555' },
+  { id: '11357', title: 'Ақтау', lat: '50.995589', lng: '50.179948' },
+  { id: '18', title: 'Атырау', lat: '47.116667', lng: '51.883333' },
+  { id: '39', title: 'Қарағанды', lat: '49.806406', lng: '73.085485' },
+  { id: '42', title: 'Қостанай', lat: '53.219333', lng: '63.634194' },
+  { id: '53', title: 'Павлодар', lat: '52.315556', lng: '76.956389' },
+  { id: '32', title: 'Семей', lat: '50.404976', lng: '80.249235' },
+  { id: '7', title: 'Орал', lat: '51.204019', lng: '51.370537' },
+  { id: '30', title: 'Өскемен', lat: '49.948325', lng: '82.627848' },
+  { id: '35', title: 'Тараз', lat: '42.883333', lng: '71.366667' },
+  { id: '162', title: 'Талдықорған', lat: '45.017837', lng: '78.382123' },
+  { id: '58', title: 'Түркістан', lat: '43.302025', lng: '68.268979' },
+  { id: '46', title: 'Қызылорда', lat: '44.842544', lng: '65.502563' },
+  { id: '51', title: 'Петропавл', lat: '54.862222', lng: '69.140833' },
+  { id: '17', title: 'Көкшетау', lat: '53.291667', lng: '69.391667' },
+];
+
+async function fetchPrayerTimes(year, lat, lng) {
+  const key = `${year}/${lat}/${lng}`;
+  const cached = prayerTimesCache.get(key);
+  if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.data;
+
+  const url = `https://api.muftyat.kz/prayer-times/${year}/${lat}/${lng}`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Muftyat API error: ${resp.status}`);
+  const json = await resp.json();
+  const data = json.result || [];
+  prayerTimesCache.set(key, { data, ts: Date.now() });
+  return data;
+}
+
+// Get major cities list
+app.get('/api/cities', (req, res) => {
+  res.json(MAJOR_CITIES);
+});
+
+// Search cities from muftyat API
+let allCitiesCache = null;
+let allCitiesCacheTs = 0;
+
+app.get('/api/cities/search', async (req, res) => {
+  try {
+    const q = (req.query.q || '').toLowerCase().trim();
+    if (!q || q.length < 2) return res.json(MAJOR_CITIES);
+
+    // Check major cities first
+    const majorMatches = MAJOR_CITIES.filter(c => c.title.toLowerCase().includes(q));
+    if (majorMatches.length > 0) return res.json(majorMatches);
+
+    // Fetch full list from muftyat (cached 24h)
+    if (!allCitiesCache || Date.now() - allCitiesCacheTs > CACHE_TTL) {
+      let all = [];
+      let url = 'https://api.muftyat.kz/cities/';
+      while (url) {
+        const resp = await fetch(url);
+        const json = await resp.json();
+        all = all.concat(json.results || []);
+        url = json.next;
+      }
+      allCitiesCache = all;
+      allCitiesCacheTs = Date.now();
+    }
+
+    const matches = allCitiesCache
+      .filter(c => c.title.toLowerCase().includes(q))
+      .slice(0, 20)
+      .map(c => ({ id: String(c.id), title: c.title, lat: c.lat, lng: c.lng, region: c.region }));
+
+    res.json(matches);
+  } catch (err) {
+    console.error('City search error:', err);
+    res.json(MAJOR_CITIES);
+  }
+});
+
+// Get prayer times for coordinates
+app.get('/api/prayer-times/:lat/:lng', async (req, res) => {
+  try {
+    const { lat, lng } = req.params;
+    const year = req.query.year || new Date().getFullYear();
+    const data = await fetchPrayerTimes(year, lat, lng);
+    res.json(data);
+  } catch (err) {
+    console.error('Prayer times error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update user city (now accepts city name + lat/lng)
 app.patch('/api/users/:userId/city', async (req, res) => {
   try {
     const { userId } = req.params;
-    const { city } = req.body;
-    const validCities = ['astana','almaty','shymkent','aktobe','aktau','atyrau','karaganda','kostanay','pavlodar','semey','oral','oskemen'];
-    if (!validCities.includes(city)) {
-      return res.status(400).json({ error: 'Invalid city' });
-    }
-    const [updated] = await db.update(users).set({ city, updated_at: new Date() }).where(eq(users.id, userId)).returning();
+    const { city, lat, lng } = req.body;
+    if (!city) return res.status(400).json({ error: 'City required' });
+
+    const [updated] = await db.update(users).set({
+      city,
+      city_lat: lat || null,
+      city_lng: lng || null,
+      updated_at: new Date(),
+    }).where(eq(users.id, userId)).returning();
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });

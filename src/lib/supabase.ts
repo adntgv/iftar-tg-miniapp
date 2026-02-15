@@ -11,6 +11,8 @@ export interface User {
   last_name: string | null;
   avatar_url: string | null;
   city: string | null;
+  city_lat: string | null;
+  city_lng: string | null;
   created_at: string;
 }
 
@@ -176,10 +178,10 @@ export async function removeInvitation(invitationId: string): Promise<void> {
   });
 }
 
-export async function updateUserCity(userId: string, city: string): Promise<User> {
+export async function updateUserCity(userId: string, city: string, lat?: string, lng?: string): Promise<User> {
   return api<User>(`/api/users/${userId}/city`, {
     method: 'PATCH',
-    body: JSON.stringify({ city }),
+    body: JSON.stringify({ city, lat, lng }),
   });
 }
 

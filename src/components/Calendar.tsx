@@ -3,25 +3,33 @@ import { format, eachDayOfInterval, isSameDay, isToday, getDay } from 'date-fns'
 import { ru } from 'date-fns/locale';
 import { Moon } from 'lucide-react';
 import type { Event } from '../lib/supabase';
-import { RAMADAN_START, RAMADAN_END, getRamadanDay, getDayTimes } from '../lib/iftarTimes';
+import { RAMADAN_START, RAMADAN_END, type DayTimes } from '../lib/iftarTimes';
 
 interface CalendarProps {
   events: Event[];
   onDateSelect: (date: Date) => void;
   selectedDate: Date | null;
-  cityId?: string;
+  prayerTimes: DayTimes[];
 }
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
-export function Calendar({ events, onDateSelect, selectedDate, cityId = 'astana' }: CalendarProps) {
-  // Get all Ramadan days with padding for week alignment
+export function Calendar({ events, onDateSelect, selectedDate, prayerTimes }: CalendarProps) {
   const { ramadanDays, emptySlotsBefore } = useMemo(() => {
     const days = eachDayOfInterval({ start: RAMADAN_START, end: RAMADAN_END });
-    // getDay returns 0 for Sunday, we need Monday=0, so adjust
-    const firstDayOfWeek = (getDay(RAMADAN_START) + 6) % 7; // Convert to Mon=0
+    const firstDayOfWeek = (getDay(RAMADAN_START) + 6) % 7;
     return { ramadanDays: days, emptySlotsBefore: firstDayOfWeek };
   }, []);
+
+  // Index prayer times by date for fast lookup
+  const timesByDate = useMemo(() => {
+    const map = new Map<string, DayTimes>();
+    for (const t of prayerTimes) {
+      const d = (t as any).Date || t.date;
+      if (d) map.set(d, t);
+    }
+    return map;
+  }, [prayerTimes]);
 
   const getEventsForDate = (date: Date) => {
     return events.filter(event => isSameDay(new Date(event.date), date));
@@ -30,7 +38,6 @@ export function Calendar({ events, onDateSelect, selectedDate, cityId = 'astana'
   const getDayStatus = (date: Date): string | null => {
     const dayEvents = getEventsForDate(date);
     if (dayEvents.length === 0) return null;
-    
     for (const event of dayEvents) {
       if (!event.invitation_status) return 'hosting';
     }
@@ -48,51 +55,24 @@ export function Calendar({ events, onDateSelect, selectedDate, cityId = 'astana'
 
   return (
     <div className="card" style={{ padding: '12px' }}>
-      {/* Header */}
       <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center',
-        gap: '8px',
-        marginBottom: '12px'
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        gap: '8px', marginBottom: '12px'
       }}>
         <Moon size={18} className="text-gold" />
         <span style={{ fontWeight: 600 }}>Рамадан 1447</span>
-        <span className="text-muted" style={{ fontSize: '14px' }}>
-          (17 фев — 18 мар)
-        </span>
+        <span className="text-muted" style={{ fontSize: '14px' }}>(17 фев — 18 мар)</span>
       </div>
 
-      {/* Weekday headers */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(7, 1fr)', 
-        gap: '4px',
-        marginBottom: '4px'
-      }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '4px' }}>
         {WEEKDAYS.map(day => (
-          <div 
-            key={day} 
-            className="text-muted"
-            style={{ 
-              textAlign: 'center', 
-              fontSize: '11px',
-              fontWeight: 500,
-              padding: '4px 0'
-            }}
-          >
+          <div key={day} className="text-muted" style={{ textAlign: 'center', fontSize: '11px', fontWeight: 500, padding: '4px 0' }}>
             {day}
           </div>
         ))}
       </div>
 
-      {/* Days grid - 7 columns */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(7, 1fr)', 
-        gap: '4px' 
-      }}>
-        {/* Empty slots before first day */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
         {Array.from({ length: emptySlotsBefore }).map((_, i) => (
           <div key={`empty-${i}`} />
         ))}
@@ -102,9 +82,8 @@ export function Calendar({ events, onDateSelect, selectedDate, cityId = 'astana'
           const isSelected = selectedDate && isSameDay(day, selectedDate);
           const isTodayDate = isToday(day);
           const hasEvents = getEventsForDate(day).length > 0;
-          const _ramadanDay = getRamadanDay(day);
-          const dayTimes = getDayTimes(day, cityId);
-          void _ramadanDay;
+          const dateStr = day.toISOString().split('T')[0];
+          const times = timesByDate.get(dateStr);
 
           return (
             <button
@@ -124,31 +103,32 @@ export function Calendar({ events, onDateSelect, selectedDate, cityId = 'astana'
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                gap: '1px',
+                gap: '0px',
                 position: 'relative',
                 color: 'var(--color-text)',
-                minHeight: '44px',
+                minHeight: '52px',
+                minWidth: '0',
               }}
             >
-              {/* Gregorian date */}
-              <span style={{ fontSize: '14px', fontWeight: 600 }}>
-                {format(day, 'd MMM', { locale: ru }).replace('.', '')}
+              <span style={{ fontSize: '13px', fontWeight: 600, lineHeight: '1.1' }}>
+                {day.getDate()}
+              </span>
+              <span className="text-muted" style={{ fontSize: '9px', lineHeight: '1' }}>
+                {format(day, 'MMM', { locale: ru }).replace('.', '')}
               </span>
               
-              {/* Iftar time */}
-              <span className="text-gold" style={{ fontSize: '9px', fontWeight: 500 }}>
-                {dayTimes.iftar}
-              </span>
+              {times ? (
+                <span className="text-gold" style={{ fontSize: '9px', fontWeight: 500 }}>
+                  {times.maghrib}
+                </span>
+              ) : (
+                <span className="text-muted" style={{ fontSize: '9px' }}>—</span>
+              )}
               
-              {/* Event indicator */}
               {hasEvents && (
                 <span style={{
-                  position: 'absolute',
-                  top: '3px',
-                  right: '3px',
-                  width: '5px',
-                  height: '5px',
-                  borderRadius: '50%',
+                  position: 'absolute', top: '3px', right: '3px',
+                  width: '5px', height: '5px', borderRadius: '50%',
                   backgroundColor: status === 'hosting' || status === 'accepted' ? '#22c55e' :
                                    status === 'pending' ? 'var(--color-gold)' : '#6366f1',
                 }} />
@@ -158,14 +138,7 @@ export function Calendar({ events, onDateSelect, selectedDate, cityId = 'astana'
         })}
       </div>
 
-      {/* Legend - compact */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center',
-        gap: '12px', 
-        marginTop: '12px', 
-        fontSize: '11px' 
-      }} className="text-muted">
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginTop: '12px', fontSize: '11px' }} className="text-muted">
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
           <span>Хозяин/Иду</span>

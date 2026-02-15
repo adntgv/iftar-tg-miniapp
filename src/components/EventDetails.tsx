@@ -19,10 +19,19 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
   const [isResponding, setIsResponding] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [localStatus, setLocalStatus] = useState<string | null>(null);
 
   const myInvitation = event.invitations?.find(
     inv => inv.guest_id === currentUser.id
   );
+  
+  // Use local status if set (optimistic update), otherwise use server status
+  const currentStatus = localStatus || myInvitation?.status;
+  
+  // Reset local status when event prop updates
+  useEffect(() => {
+    setLocalStatus(null);
+  }, [event]);
 
   // Lock body scroll when modal is open
   useEffect(() => {
@@ -34,6 +43,7 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
     if (!myInvitation) return;
     
     setIsResponding(true);
+    setLocalStatus(status); // Optimistic update
     try {
       await respondToInvitation(myInvitation.id, status);
       onUpdate();
@@ -301,10 +311,10 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
                   style={{ 
                     flexDirection: 'column', 
                     padding: '16px',
-                    backgroundColor: myInvitation.status === 'accepted' ? 'var(--color-primary)' : 'var(--color-border)'
+                    backgroundColor: currentStatus === 'accepted' ? 'var(--color-primary)' : 'var(--color-border)'
                   }}
                 >
-                  {isResponding && myInvitation.status !== 'accepted' ? (
+                  {isResponding && currentStatus !== 'accepted' ? (
                     <span className="animate-spin" style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%' }} />
                   ) : (
                     <Check size={20} />
@@ -319,10 +329,10 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
                   style={{ 
                     flexDirection: 'column', 
                     padding: '16px',
-                    backgroundColor: myInvitation.status === 'maybe' ? '#6366f1' : 'var(--color-border)'
+                    backgroundColor: currentStatus === 'maybe' ? '#6366f1' : 'var(--color-border)'
                   }}
                 >
-                  {isResponding && myInvitation.status !== 'maybe' ? (
+                  {isResponding && currentStatus !== 'maybe' ? (
                     <span className="animate-spin" style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%' }} />
                   ) : (
                     <HelpCircle size={20} />
@@ -337,10 +347,10 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
                   style={{ 
                     flexDirection: 'column', 
                     padding: '16px',
-                    backgroundColor: myInvitation.status === 'declined' ? '#dc2626' : 'var(--color-border)'
+                    backgroundColor: currentStatus === 'declined' ? '#dc2626' : 'var(--color-border)'
                   }}
                 >
-                  {isResponding && myInvitation.status !== 'declined' ? (
+                  {isResponding && currentStatus !== 'declined' ? (
                     <span className="animate-spin" style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%' }} />
                   ) : (
                     <XIcon size={20} />
