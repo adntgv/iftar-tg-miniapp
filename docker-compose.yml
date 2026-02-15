@@ -16,8 +16,12 @@ services:
       context: ./api
       dockerfile: Dockerfile
     environment:
-      - SERVICE_FQDN_API_3002
       - DATABASE_URL=${DATABASE_URL:?}
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.iftar-api.rule=Host(`iftar-api.adntgv.com`)"
+      - traefik.http.routers.iftar-api.entrypoints=http
+      - traefik.http.services.iftar-api.loadbalancer.server.port=3002
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3002/api/cities"]
       interval: 30s
@@ -31,7 +35,7 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL:?}
       - BOT_TOKEN=${BOT_TOKEN:?}
-      - MINI_APP_URL=${SERVICE_FQDN_MINIAPP_80:-https://iftar.adntgv.com}
+      - MINI_APP_URL=https://iftar.adntgv.com
       - API_URL=http://api:3002
 
   og-api:
