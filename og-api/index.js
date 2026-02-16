@@ -12,7 +12,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const API_URL = process.env.API_URL || 'https://iftar-api.adntgv.com';
 const BOT_USERNAME = process.env.BOT_USERNAME || 'iftar_coordinator_bot';
-const RAMADAN_START = new Date('2026-02-17');
+const RAMADAN_START = new Date('2026-02-19');
 
 // Load font
 let fontData;

@@ -181,7 +181,7 @@ function App() {
         if (eventId) await handleDeepLink(eventId, currentUser?.id || user?.id);
         const match = window.location.pathname.match(/^\/invite\/(.+)$/);
         if (match?.[1]) await handleDeepLink(match[1], currentUser?.id || user?.id);
-        if (params.get('create') === '1') { setSelectedDate(new Date('2026-02-17')); setIsCreateModalOpen(true); }
+        if (params.get('create') === '1') { setSelectedDate(new Date('2026-02-19')); setIsCreateModalOpen(true); }
       } catch (error) {
         console.error('Failed to initialize:', error);
         showError('Ошибка инициализации');
