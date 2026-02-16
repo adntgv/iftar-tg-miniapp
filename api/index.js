@@ -461,6 +461,47 @@ app.patch('/api/users/:userId/city', async (req, res) => {
   }
 });
 
+// Analytics stats endpoint
+app.get('/api/stats', async (req, res) => {
+  try {
+    const [counts] = await sql`
+      SELECT
+        (SELECT count(*) FROM users) AS total_users,
+        (SELECT count(*) FROM events) AS total_events,
+        (SELECT count(DISTINCT host_id) FROM events) AS unique_hosts,
+        (SELECT count(*) FROM invitations) AS total_invitations,
+        (SELECT count(*) FROM invitations WHERE status = 'accepted') AS accepted_rsvps
+    `;
+
+    const upcoming_events = await sql`
+      SELECT e.id, e.date, e.location, e.iftar_time, e.is_host_mode,
+             u.first_name AS host_name, u.username AS host_username,
+             (SELECT count(*) FROM invitations i WHERE i.event_id = e.id) AS invite_count,
+             (SELECT count(*) FROM invitations i WHERE i.event_id = e.id AND i.status = 'accepted') AS accepted_count
+      FROM events e
+      LEFT JOIN users u ON e.host_id = u.id
+      WHERE e.date >= CURRENT_DATE
+      ORDER BY e.date ASC
+      LIMIT 20
+    `;
+
+    const recent_users = await sql`
+      SELECT first_name, username, created_at FROM users ORDER BY created_at DESC LIMIT 10
+    `;
+
+    const recent_events = await sql`
+      SELECT e.date, e.location, e.created_at, u.first_name AS host_name, u.username AS host_username
+      FROM events e LEFT JOIN users u ON e.host_id = u.id
+      ORDER BY e.created_at DESC LIMIT 10
+    `;
+
+    res.json({ counts, upcoming_events, recent_users, recent_events });
+  } catch (err) {
+    console.error('Error in GET /api/stats:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3002;
 app.listen(PORT, () => {
   console.log(`Iftar API running on port ${PORT}`);

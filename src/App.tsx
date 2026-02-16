@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Analytics } from './components/Analytics';
 import { Calendar } from './components/Calendar';
 import { CreateEventModal } from './components/CreateEventModal';
 import { EventDetails } from './components/EventDetails';
@@ -20,6 +21,11 @@ import {
 import './index.css';
 
 function App() {
+  // Simple path-based routing
+  if (window.location.pathname === '/analytics') {
+    return <Analytics />;
+  }
+
   const [user, setUser] = useState<User | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
