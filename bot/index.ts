@@ -41,11 +41,14 @@ const invitations = pgTable('invitations', {
 });
 
 // Database connection
-const DATABASE_URL = process.env.DATABASE_URL!;
+const DATABASE_URL = process.env.DATABASE_URL || 'postgres://iftar_user:iftar_secure_pass_2026@io4gs04gskogggg40g8s0s00:5432/iftar_db';
 const sql = postgres(DATABASE_URL);
 const db = drizzle(sql);
 
 const bot = new Bot(process.env.BOT_TOKEN!);
+bot.catch((err) => {
+  console.error('Bot error (caught):', err.message || err);
+});
 
 const MINI_APP_URL = process.env.MINI_APP_URL || 'https://iftar.adntgv.com';
 const UMAMI_URL = process.env.UMAMI_URL || 'https://umami.adntgv.com';
@@ -532,7 +535,7 @@ async function sendReminders() {
 
 // ===== Feedback system =====
 const FEEDBACK_TOPIC_ID = 1636;
-const BRIDGE_URL = 'http://127.0.0.1:18800';
+const BRIDGE_URL = process.env.BRIDGE_URL || 'http://10.0.18.1:18800';
 const BRIDGE_TOKEN = 'X_K6rjUFN1YGNUHXWxRWlA1iCNwrD1sGoYD_OMQNMKM';
 const WORKSPACE_CHAT_ID = '-1003728274124';
 const ADMIN_IDS = [289310951, 6454712844];
