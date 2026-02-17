@@ -489,13 +489,20 @@ app.get('/api/stats', async (req, res) => {
       SELECT first_name, username, created_at FROM users ORDER BY created_at DESC LIMIT 10
     `;
 
+    const user_growth = await sql`
+      SELECT date_trunc('day', created_at)::date AS day, count(*) AS new_users
+      FROM users
+      GROUP BY 1
+      ORDER BY 1
+    `;
+
     const recent_events = await sql`
       SELECT e.date, e.location, e.created_at, u.first_name AS host_name, u.username AS host_username
       FROM events e LEFT JOIN users u ON e.host_id = u.id
       ORDER BY e.created_at DESC LIMIT 10
     `;
 
-    res.json({ counts, upcoming_events, recent_users, recent_events });
+    res.json({ counts, upcoming_events, recent_users, recent_events, user_growth });
   } catch (err) {
     console.error('Error in GET /api/stats:', err);
     res.status(500).json({ error: err.message });

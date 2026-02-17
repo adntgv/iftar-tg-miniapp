@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface Stats {
   counts: {
@@ -8,21 +8,7 @@ interface Stats {
     total_invitations: number;
     accepted_rsvps: number;
   };
-  upcoming_events: Array<{
-    id: string;
-    date: string;
-    location: string;
-    iftar_time: string;
-    host_name: string;
-    host_username: string;
-    invite_count: number;
-    accepted_count: number;
-  }>;
-  recent_users: Array<{
-    first_name: string;
-    username: string;
-    created_at: string;
-  }>;
+  user_growth: Array<{ day: string; new_users: number }>;
   recent_events: Array<{
     date: string;
     location: string;
@@ -30,6 +16,118 @@ interface Stats {
     host_name: string;
     host_username: string;
   }>;
+}
+
+function GrowthChart({ data }: { data: Array<{ day: string; new_users: number }> }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || data.length === 0) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+    const W = rect.width;
+    const H = rect.height;
+
+    // Compute cumulative totals
+    let cumulative = 0;
+    const points = data.map(d => {
+      cumulative += Number(d.new_users);
+      return { day: d.day, total: cumulative };
+    });
+
+    const maxVal = Math.max(...points.map(p => p.total), 1);
+    const padTop = 24, padBot = 40, padLeft = 36, padRight = 12;
+    const chartW = W - padLeft - padRight;
+    const chartH = H - padTop - padBot;
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Grid lines
+    const gridLines = 4;
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    ctx.font = '10px system-ui';
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= gridLines; i++) {
+      const y = padTop + chartH - (i / gridLines) * chartH;
+      ctx.beginPath();
+      ctx.moveTo(padLeft, y);
+      ctx.lineTo(W - padRight, y);
+      ctx.stroke();
+      ctx.fillText(String(Math.round((i / gridLines) * maxVal)), padLeft - 6, y + 3);
+    }
+
+    if (points.length < 2) {
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.textAlign = 'center';
+      ctx.font = '13px system-ui';
+      ctx.fillText('Недостаточно данных', W / 2, H / 2);
+      return;
+    }
+
+    // Draw area + line
+    const xStep = chartW / (points.length - 1);
+    const getX = (i: number) => padLeft + i * xStep;
+    const getY = (v: number) => padTop + chartH - (v / maxVal) * chartH;
+
+    // Area fill
+    const gradient = ctx.createLinearGradient(0, padTop, 0, padTop + chartH);
+    gradient.addColorStop(0, 'rgba(212, 175, 55, 0.3)');
+    gradient.addColorStop(1, 'rgba(212, 175, 55, 0.02)');
+    ctx.beginPath();
+    ctx.moveTo(getX(0), padTop + chartH);
+    points.forEach((p, i) => ctx.lineTo(getX(i), getY(p.total)));
+    ctx.lineTo(getX(points.length - 1), padTop + chartH);
+    ctx.closePath();
+    ctx.fillStyle = gradient;
+    ctx.fill();
+
+    // Line
+    ctx.beginPath();
+    points.forEach((p, i) => {
+      const x = getX(i), y = getY(p.total);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = '#d4af37';
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    // Dots
+    points.forEach((p, i) => {
+      ctx.beginPath();
+      ctx.arc(getX(i), getY(p.total), 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#d4af37';
+      ctx.fill();
+    });
+
+    // X-axis labels
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'center';
+    const labelEvery = Math.max(1, Math.floor(points.length / 6));
+    points.forEach((p, i) => {
+      if (i % labelEvery === 0 || i === points.length - 1) {
+        const d = new Date(p.day);
+        ctx.fillText(`${d.getDate()}/${d.getMonth() + 1}`, getX(i), H - padBot + 16);
+      }
+    });
+  }, [data]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ width: '100%', height: 200, display: 'block' }}
+    />
+  );
 }
 
 export function Analytics() {
@@ -92,32 +190,11 @@ export function Analytics() {
           ))}
         </div>
 
-        {/* Upcoming events */}
-        <Section title="🗓 Ближайшие ифтары">
-          {stats.upcoming_events.length === 0 && <Muted>Нет предстоящих</Muted>}
-          {stats.upcoming_events.map(e => (
-            <Row key={e.id}>
-              <div>
-                <div style={{ fontWeight: 500 }}>{new Date(e.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })} {e.iftar_time && `• ${e.iftar_time.slice(0, 5)}`}</div>
-                <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-                  {e.location || 'Место не указано'} — {e.host_name || e.host_username || '?'}
-                </div>
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
-                ✅ {e.accepted_count}/{e.invite_count}
-              </div>
-            </Row>
-          ))}
-        </Section>
-
-        {/* Recent signups */}
-        <Section title="🆕 Новые пользователи">
-          {stats.recent_users.map((u, i) => (
-            <Row key={i}>
-              <span>{u.first_name || u.username || 'Аноним'}{u.username && <span style={{ color: 'var(--color-text-muted)', fontSize: 13 }}> @{u.username}</span>}</span>
-              <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{timeAgo(u.created_at)}</span>
-            </Row>
-          ))}
+        {/* User growth chart */}
+        <Section title="📈 Рост пользователей">
+          <div style={{ backgroundColor: 'var(--color-card)', borderRadius: 12, padding: '16px 12px', border: '1px solid var(--color-border)' }}>
+            <GrowthChart data={stats.user_growth || []} />
+          </div>
         </Section>
 
         {/* Recent events */}
@@ -152,8 +229,4 @@ function Row({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   );
-}
-
-function Muted({ children }: { children: React.ReactNode }) {
-  return <div style={{ color: 'var(--color-text-muted)', fontSize: 14, textAlign: 'center', padding: 16 }}>{children}</div>;
 }
