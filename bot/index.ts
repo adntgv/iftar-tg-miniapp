@@ -543,11 +543,27 @@ bot.command('feedback', async (ctx) => {
   const telegramId = ctx.from?.id;
   if (!telegramId) return;
   feedbackWaiting.add(telegramId);
-  await ctx.reply('Напишите ваш отзыв следующим сообщением 📝');
+  await ctx.reply('Напишите или запишите голосовое сообщение с отзывом 📝🎤');
   trackEvent('feedback_start', { from: telegramId });
 });
 
-// Handle feedback text (must be registered before other message handlers)
+// Helper: send text header to feedback topic via Bridge
+async function sendFeedbackToTopic(text: string) {
+  await fetch(`${BRIDGE_URL}/send`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${BRIDGE_TOKEN}`,
+    },
+    body: JSON.stringify({
+      chat_id: WORKSPACE_CHAT_ID,
+      text,
+      reply_to_message_id: FEEDBACK_TOPIC_ID,
+    }),
+  });
+}
+
+// Handle feedback: text messages
 bot.on('message:text', async (ctx, next) => {
   const telegramId = ctx.from?.id;
   if (!telegramId || !feedbackWaiting.has(telegramId)) {
@@ -556,9 +572,8 @@ bot.on('message:text', async (ctx, next) => {
   feedbackWaiting.delete(telegramId);
 
   const feedbackText = ctx.message.text;
-  const user = await getOrCreateUser(telegramId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
+  await getOrCreateUser(telegramId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
 
-  // Save to DB
   try {
     await sql`INSERT INTO feedback (user_id, text) VALUES (${telegramId}, ${feedbackText})`;
   } catch (e) {
@@ -567,29 +582,52 @@ bot.on('message:text', async (ctx, next) => {
 
   await ctx.reply('Спасибо за отзыв! 🤲');
 
-  // Forward to workspace topic
   const firstName = ctx.from?.first_name || '';
   const username = ctx.from?.username ? `@${ctx.from.username}` : 'без username';
-  const forwardText = `💬 Отзыв от ${firstName} (${username}):\n\n${feedbackText}`;
-
   try {
-    await fetch(`${BRIDGE_URL}/send`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${BRIDGE_TOKEN}`,
-      },
-      body: JSON.stringify({
-        chat_id: WORKSPACE_CHAT_ID,
-        text: forwardText,
-        reply_to_message_id: FEEDBACK_TOPIC_ID,
-      }),
-    });
+    await sendFeedbackToTopic(`💬 Отзыв от ${firstName} (${username}):\n\n${feedbackText}`);
   } catch (e) {
     console.error('Failed to forward feedback:', e);
   }
 
   trackEvent('feedback_submitted', { from: telegramId });
+});
+
+// Handle feedback: voice/audio messages
+bot.on(['message:voice', 'message:audio'], async (ctx, next) => {
+  const telegramId = ctx.from?.id;
+  if (!telegramId || !feedbackWaiting.has(telegramId)) {
+    return next();
+  }
+  feedbackWaiting.delete(telegramId);
+
+  await getOrCreateUser(telegramId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
+
+  try {
+    await sql`INSERT INTO feedback (user_id, text) VALUES (${telegramId}, ${'[голосовое сообщение]'})`;
+  } catch (e) {
+    console.error('Failed to save voice feedback:', e);
+  }
+
+  await ctx.reply('Спасибо за отзыв! 🤲');
+
+  const firstName = ctx.from?.first_name || '';
+  const username = ctx.from?.username ? `@${ctx.from.username}` : 'без username';
+  try {
+    // Send text header first
+    await sendFeedbackToTopic(`💬 Голосовой отзыв от ${firstName} (${username})`);
+    // Forward the voice message to the topic
+    await bot.api.forwardMessage(
+      Number(WORKSPACE_CHAT_ID),
+      ctx.message.chat.id,
+      ctx.message.message_id,
+      { message_thread_id: FEEDBACK_TOPIC_ID }
+    );
+  } catch (e) {
+    console.error('Failed to forward voice feedback:', e);
+  }
+
+  trackEvent('feedback_voice_submitted', { from: telegramId });
 });
 
 // ===== Broadcast command (admin only) =====
