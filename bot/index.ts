@@ -617,15 +617,19 @@ bot.on(['message:voice', 'message:audio'], async (ctx, next) => {
   const firstName = ctx.from?.first_name || '';
   const username = ctx.from?.username ? `@${ctx.from.username}` : 'без username';
   try {
-    // Send text header first
-    await sendFeedbackToTopic(`💬 Голосовой отзыв от ${firstName} (${username})`);
-    // Forward the voice message to the topic
-    await bot.api.forwardMessage(
-      Number(WORKSPACE_CHAT_ID),
-      ctx.message.chat.id,
-      ctx.message.message_id,
-      { message_thread_id: FEEDBACK_TOPIC_ID }
-    );
+    // Get voice file URL and send via Bridge
+    const fileId = ctx.message.voice?.file_id || ctx.message.audio?.file_id;
+    let fileUrl = '';
+    if (fileId) {
+      try {
+        const file = await bot.api.getFile(fileId);
+        fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+      } catch (e) {
+        console.error('Failed to get voice file URL:', e);
+      }
+    }
+    const voiceInfo = fileUrl ? `\n\n🔗 Голосовое: ${fileUrl}` : '';
+    await sendFeedbackToTopic(`🎤 Голосовой отзыв от ${firstName} (${username})${voiceInfo}`);
   } catch (e) {
     console.error('Failed to forward voice feedback:', e);
   }
