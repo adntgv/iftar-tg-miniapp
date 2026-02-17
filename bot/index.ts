@@ -530,6 +530,102 @@ async function sendReminders() {
   }
 }
 
+// ===== Feedback system =====
+const FEEDBACK_TOPIC_ID = 1636;
+const BRIDGE_URL = 'http://127.0.0.1:18800';
+const BRIDGE_TOKEN = 'X_K6rjUFN1YGNUHXWxRWlA1iCNwrD1sGoYD_OMQNMKM';
+const WORKSPACE_CHAT_ID = '-1003728274124';
+const ADMIN_IDS = [289310951, 6454712844];
+
+const feedbackWaiting = new Set<number>(); // telegram IDs waiting for feedback text
+
+bot.command('feedback', async (ctx) => {
+  const telegramId = ctx.from?.id;
+  if (!telegramId) return;
+  feedbackWaiting.add(telegramId);
+  await ctx.reply('Напишите ваш отзыв следующим сообщением 📝');
+  trackEvent('feedback_start', { from: telegramId });
+});
+
+// Handle feedback text (must be registered before other message handlers)
+bot.on('message:text', async (ctx, next) => {
+  const telegramId = ctx.from?.id;
+  if (!telegramId || !feedbackWaiting.has(telegramId)) {
+    return next();
+  }
+  feedbackWaiting.delete(telegramId);
+
+  const feedbackText = ctx.message.text;
+  const user = await getOrCreateUser(telegramId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
+
+  // Save to DB
+  try {
+    await sql`INSERT INTO feedback (user_id, text) VALUES (${telegramId}, ${feedbackText})`;
+  } catch (e) {
+    console.error('Failed to save feedback:', e);
+  }
+
+  await ctx.reply('Спасибо за отзыв! 🤲');
+
+  // Forward to workspace topic
+  const firstName = ctx.from?.first_name || '';
+  const username = ctx.from?.username ? `@${ctx.from.username}` : 'без username';
+  const forwardText = `💬 Отзыв от ${firstName} (${username}):\n\n${feedbackText}`;
+
+  try {
+    await fetch(`${BRIDGE_URL}/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${BRIDGE_TOKEN}`,
+      },
+      body: JSON.stringify({
+        chat_id: WORKSPACE_CHAT_ID,
+        text: forwardText,
+        reply_to_message_id: FEEDBACK_TOPIC_ID,
+      }),
+    });
+  } catch (e) {
+    console.error('Failed to forward feedback:', e);
+  }
+
+  trackEvent('feedback_submitted', { from: telegramId });
+});
+
+// ===== Broadcast command (admin only) =====
+bot.command('broadcast', async (ctx) => {
+  const telegramId = ctx.from?.id;
+  if (!telegramId || !ADMIN_IDS.includes(telegramId)) return;
+
+  const message = ctx.match;
+  if (!message) {
+    await ctx.reply('Использование: /broadcast <сообщение>');
+    return;
+  }
+
+  const allUsers = await sql`SELECT telegram_id FROM users`;
+  let sent = 0;
+  let failed = 0;
+
+  await ctx.reply(`📡 Рассылка начата для ${allUsers.length} пользователей...`);
+
+  for (let i = 0; i < allUsers.length; i++) {
+    try {
+      await bot.api.sendMessage(allUsers[i].telegram_id, message, { parse_mode: 'Markdown' });
+      sent++;
+    } catch (e) {
+      failed++;
+    }
+    // Rate limit: 30 msgs/sec
+    if ((i + 1) % 30 === 0) {
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
+  await ctx.reply(`✅ Рассылка завершена!\n\n📨 Отправлено: ${sent}\n❌ Ошибок: ${failed}`);
+  trackEvent('broadcast', { sent, failed, from: telegramId });
+});
+
 // Command to manually trigger reminders (for testing)
 bot.command('send_reminders', async (ctx) => {
   if (ctx.from?.id !== 289310951 && ctx.from?.id !== 6454712844) {

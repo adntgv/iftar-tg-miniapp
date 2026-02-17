@@ -509,6 +509,23 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
+// Get all feedback
+app.get('/api/feedback', async (req, res) => {
+  try {
+    const feedback = await sql`
+      SELECT f.id, f.text, f.created_at, f.user_id,
+             u.first_name, u.username
+      FROM feedback f
+      LEFT JOIN users u ON u.telegram_id = f.user_id
+      ORDER BY f.created_at DESC
+    `;
+    res.json(feedback);
+  } catch (err) {
+    console.error('Error in GET /api/feedback:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3002;
 app.listen(PORT, () => {
   console.log(`Iftar API running on port ${PORT}`);
