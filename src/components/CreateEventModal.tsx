@@ -156,21 +156,23 @@ export function CreateEventModal({
             {format(selectedDate, 'd MMMM', { locale: ru })} • {ramadanDay} Рамадан • {iftarTime}
           </p>
 
-          <button
-            onClick={shareEvent}
-            className="btn btn-primary"
-            style={{ width: '100%', padding: '14px', marginBottom: '12px' }}
-          >
-            <Share2 size={20} />
-            Пригласить друзей
-          </button>
+          {isHost && (
+            <button
+              onClick={shareEvent}
+              className="btn btn-primary"
+              style={{ width: '100%', padding: '14px', marginBottom: '12px' }}
+            >
+              <Share2 size={20} />
+              Пригласить друзей
+            </button>
+          )}
           
           <button
             onClick={onClose}
-            className="btn btn-ghost"
-            style={{ width: '100%', padding: '12px' }}
+            className={isHost ? "btn btn-ghost" : "btn btn-primary"}
+            style={{ width: '100%', padding: isHost ? '12px' : '14px' }}
           >
-            Закрыть
+            {isHost ? 'Закрыть' : 'Готово'}
           </button>
         </div>
       </div>
