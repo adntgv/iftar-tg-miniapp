@@ -49,6 +49,29 @@ const DATABASE_URL = process.env.DATABASE_URL || 'postgres://iftar_user:iftar_se
 const sql = postgres(DATABASE_URL);
 const db = drizzle(sql);
 
+const BOT_TOKEN = process.env.BOT_TOKEN;
+
+// Helper: send Telegram message via Bot API
+async function sendTelegramMessage(chatId, text, parseMode = 'Markdown') {
+  if (!BOT_TOKEN) {
+    console.warn('BOT_TOKEN not set, skipping Telegram notification');
+    return;
+  }
+  try {
+    const resp = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: parseMode }),
+    });
+    if (!resp.ok) {
+      const err = await resp.text();
+      console.error('Telegram sendMessage failed:', err);
+    }
+  } catch (e) {
+    console.error('Failed to send Telegram notification:', e);
+  }
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -316,6 +339,48 @@ app.patch('/api/invitations/:invitationId', async (req, res) => {
     }).where(eq(invitations.id, invitationId)).returning();
 
     res.json(updated);
+
+    // Notify host via Telegram bot (async, don't block response)
+    if (updated) {
+      (async () => {
+        try {
+          // Get event + host + guest info
+          const [eventResult] = await db.select({
+            event: events,
+            host: users,
+          }).from(events)
+            .leftJoin(users, eq(events.host_id, users.id))
+            .where(eq(events.id, updated.event_id))
+            .limit(1);
+
+          if (!eventResult?.host?.telegram_id) return;
+
+          // Get guest info
+          let guestName = 'Гость';
+          if (updated.guest_id) {
+            const [guest] = await db.select().from(users).where(eq(users.id, updated.guest_id)).limit(1);
+            if (guest) guestName = guest.first_name || guest.username || 'Гость';
+            // Don't notify if guest is the host
+            if (guest?.telegram_id === eventResult.host.telegram_id) return;
+          }
+
+          const eventDate = new Date(eventResult.event.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+          const statusEmoji = { accepted: '✅', declined: '❌', maybe: '🤔' };
+          const guestCount = updated.guest_count || 1;
+          const guestCountText = guestCount > 1 ? ` (${guestCount} чел.)` : '';
+          const statusLabel = { accepted: `придёт${guestCountText}`, declined: 'не сможет', maybe: 'пока не уверен' };
+
+          await sendTelegramMessage(
+            eventResult.host.telegram_id,
+            `${statusEmoji[status] || '📝'} *${guestName}* ${statusLabel[status] || 'обновил ответ'}!\n\n` +
+            `📅 Ифтар ${eventDate}\n` +
+            `📍 ${eventResult.event.location || 'Место не указано'}`
+          );
+        } catch (e) {
+          console.error('Failed to notify host:', e);
+        }
+      })();
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

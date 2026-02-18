@@ -17,6 +17,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - DATABASE_URL=${DATABASE_URL}
+      - BOT_TOKEN=${BOT_TOKEN}
       - SERVICE_FQDN_API_3002
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3002/api/cities"]
