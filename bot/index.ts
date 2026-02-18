@@ -561,7 +561,7 @@ async function sendFeedbackToTopic(text: string) {
     body: JSON.stringify({
       chat_id: WORKSPACE_CHAT_ID,
       text,
-      reply_to_message_id: FEEDBACK_TOPIC_ID,
+      topic_id: FEEDBACK_TOPIC_ID,
     }),
   });
 }
