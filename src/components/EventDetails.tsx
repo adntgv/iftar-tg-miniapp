@@ -16,6 +16,7 @@ interface EventDetailsProps {
 }
 
 export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, isHost }: EventDetailsProps) {
+  const isCreator = event.host_id === currentUser.id;
   const [isResponding, setIsResponding] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -384,8 +385,8 @@ export function EventDetails({ event, currentUser, onClose, onUpdate, onRSVP, is
             </button>
           )}
 
-          {/* Delete button (for host) */}
-          {isHost && (
+          {/* Delete button (for creator — host or "меня позвали") */}
+          {isCreator && (
             <>
               {!showDeleteConfirm ? (
                 <button
